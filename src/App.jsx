@@ -2,12 +2,25 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
 const categoryNames = {
-  scam: 'scam/หลอกลวง',
+  scam: 'แอบอ้างหน่วยงานรัฐ',
+  bank: 'แอบอ้างธนาคาร',
   spam: 'สแปม/โทรซ้ำ',
+  ai_voice: 'ปลอมเสียงคนรู้จัก',
+  loan: 'ปล่อยกู้',
+  prize: 'รับรางวัล',
   debt: 'เรียกหนี้/กดดัน',
   impersonation: 'แอบอ้างหน่วยงาน',
   harassment: 'คุกคาม/รังควาน',
 }
+
+const getCategoryName = (category) => {
+  if (!category) return ''
+  return categoryNames[category] || category
+}
+
+const getReportDetail = (report) => report.highestCategory
+  ? `${report.highestCategory} เป็นประเด็นหลัก โดยมี ${report.count} รายงานในระบบ`
+  : `มีการรายงานเบอร์นี้ ${report.count} รายงานในระบบ`
 
 const severityWeight = {
   low: 1,
@@ -45,14 +58,40 @@ const getScoreColor = (score) => {
   return '#34d399'
 }
 
+const getCheckPopupIcon = (popup) => {
+  if (!popup.found) return { className: 'check-popup-icon search', icon: '?' }
+  if (popup.riskLevel === 'สูง') return { className: 'check-popup-icon risk-high', icon: '!' }
+  if (popup.riskLevel === 'กลาง') return { className: 'check-popup-icon risk-medium', icon: '!' }
+  return { className: 'check-popup-icon risk-low', icon: '✓' }
+}
+
+const reportsStorageKey = 'kyn-reports'
+
+const readLocalReports = () => {
+  try {
+    return JSON.parse(localStorage.getItem(reportsStorageKey) || '[]')
+  } catch {
+    return []
+  }
+}
+
+const saveLocalReport = (report) => {
+  const reports = [report, ...readLocalReports()]
+  localStorage.setItem(reportsStorageKey, JSON.stringify(reports))
+  return report
+}
+
 function App() {
   const [reports, setReports] = useState([])
 
   useEffect(() => {
     fetch('/api/reports')
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) throw new Error('API unavailable')
+        return response.json()
+      })
       .then(setReports)
-      .catch(() => setReports([]))
+      .catch(() => setReports(readLocalReports()))
   }, [])
 
   const [activeTab, setActiveTab] = useState('check')
@@ -99,7 +138,7 @@ function App() {
           count: entry.count,
           riskScore,
           riskLevel: getRiskLevel(riskScore),
-          highestCategory: highestCategory ? categoryNames[highestCategory[0]] : 'ไม่ระบุ',
+          highestCategory: highestCategory ? getCategoryName(highestCategory[0]) : '',
         }
       })
       .sort((a, b) => b.riskScore - a.riskScore)
@@ -136,7 +175,7 @@ function App() {
     }, {})
     const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]
     if (!topCategory || !yesterdayReports.length) return null
-    const category = categoryNames[topCategory[0]] || topCategory[0]
+    const category = getCategoryName(topCategory[0]) || 'ไม่ระบุประเภท'
 
     return {
       category,
@@ -173,7 +212,7 @@ function App() {
       phone: match.phone,
       riskScore: match.riskScore,
       riskLevel: match.riskLevel,
-      detail: `${match.highestCategory} เป็นประเด็นหลัก โดยมี ${match.count} รายงานในฐานข้อมูล`,
+      detail: getReportDetail(match),
     })
   }, [checkPhone, historyByPhone])
 
@@ -196,15 +235,21 @@ function App() {
     setCheckPopup(match ? {
       phone: normalized,
       title: 'เบอร์นี้เคยถูกรายงาน',
-      detail: `${match.highestCategory} เป็นประเด็นหลัก โดยมี ${match.count} รายงานในระบบ`,
+      detail: getReportDetail(match),
       found: true,
       riskLevel: match.riskLevel,
     } : {
       phone: normalized,
-      title: 'เบอร์นี้ยังไม่มีรายงาน',
-      detail: 'ไม่พบข้อมูลการรายงานเบอร์นี้ในระบบ',
+      title: 'ยังไม่มีประวัติรายงานเบอร์นี้ในระบบ',
+      detail: '',
       found: false,
     })
+  }
+
+  const handleReportFromCheck = () => {
+    setForm((previous) => ({ ...previous, phone: checkPopup.phone }))
+    setCheckPopup(null)
+    setActiveTab('report')
   }
 
   const handleReportSubmit = async (event) => {
@@ -239,14 +284,18 @@ function App() {
       date: new Date().toLocaleDateString('en-CA'),
     }
 
-    const response = await fetch('/api/reports', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newReport),
-    })
-    if (!response.ok) return
-
-    const savedReport = await response.json()
+    let savedReport
+    try {
+      const response = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newReport),
+      })
+      if (!response.ok) throw new Error('API unavailable')
+      savedReport = await response.json()
+    } catch {
+      savedReport = saveLocalReport(newReport)
+    }
     setReports((previous) => [savedReport, ...previous])
     setCheckPhone(phone)
     setSuccessReport(newReport)
@@ -272,10 +321,10 @@ function App() {
         <div className="tab-screen report-screen">
           <div className="check-header">
             <div className="check-icon">📬</div>
-            <span>แจ้งเบอร์</span>
+            <span>รายงานเบอร์</span>
           </div>
 
-          <h2>แจ้งเบอร์</h2>
+          <h2>รายงานเบอร์</h2>
           <p>กรอกข้อมูลให้ครบ เพื่อช่วยคัดกรองความเสี่ยง</p>
 
           <form onSubmit={handleReportSubmit} className="report-form">
@@ -463,7 +512,7 @@ function App() {
         </button>
         <button type="button" className={activeTab === 'report' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('report')}>
           <span className="nav-icon">📬</span>
-          <span>แจ้งเบอร์</span>
+          <span>รายงานเบอร์</span>
         </button>
         <button type="button" className={activeTab === 'history' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('history')}>
           <span className="nav-icon">☰</span>
@@ -513,13 +562,14 @@ function App() {
       {checkPopup ? (
         <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="check-popup-title">
           <section className="check-popup-modal">
-            <button type="button" className="modal-close" aria-label="ปิด" onClick={() => setCheckPopup(null)}>×</button>
-            <div className={checkPopup.found ? 'check-popup-icon found' : 'check-popup-icon'}>{checkPopup.found ? '✓' : 'i'}</div>
+            <div className={getCheckPopupIcon(checkPopup).className}>{getCheckPopupIcon(checkPopup).icon}</div>
             <h2 id="check-popup-title">{checkPopup.title}</h2>
             <p className="check-popup-phone">{checkPopup.phone}</p>
-            <p className="check-popup-detail">{checkPopup.detail}</p>
+            {checkPopup.detail ? <p className="check-popup-detail">{checkPopup.detail}</p> : null}
             {checkPopup.riskLevel ? <span className="check-popup-badge">ระดับความเสี่ยง {checkPopup.riskLevel}</span> : null}
-            <button type="button" className="success-home-button" onClick={() => setCheckPopup(null)}>ปิด</button>
+            <p className="check-popup-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
+            <button type="button" className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>รายงานเบอร์นี้</button>
+            <button type="button" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ยกเลิก</button>
           </section>
         </div>
       ) : null}

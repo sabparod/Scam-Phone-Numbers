@@ -623,15 +623,31 @@
   font-weight: 800;
 }
 
-.check-popup-icon.found {
+.check-popup-icon.risk-low {
   background: #e9fff2;
   color: #18ae63;
+}
+
+.check-popup-icon.search {
+  background: #e9fff2;
+  color: #0eaa58;
+}
+
+.check-popup-icon.risk-medium {
+  background: #fff4d6;
+  color: #b77900;
+}
+
+.check-popup-icon.risk-high {
+  background: #ffebe6;
+  color: #d94801;
 }
 
 .check-popup-modal h2 {
   margin: 0 0 8px;
   color: #152443;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
+  line-height: 1.4;
 }
 
 .check-popup-phone {
@@ -643,9 +659,44 @@
 
 .check-popup-detail {
   margin: 0;
-  color: #74809a;
-  font-size: 0.8rem;
+  color: #465a78;
+  font-size: 0.98rem;
   line-height: 1.5;
+}
+
+.check-popup-question {
+  margin: 18px 0 0;
+  color: #152443;
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.success-home-button.check-popup-report-button {
+  margin-top: 12px;
+  background: #e85d04;
+  box-shadow: 0 8px 16px rgba(232, 93, 4, 0.24);
+}
+
+.success-home-button.check-popup-report-button:hover {
+  background: #c2410c;
+}
+
+.check-popup-cancel-button {
+  width: 100%;
+  height: 46px;
+  margin-top: 10px;
+  border: 1px solid #b9c8dc;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #536783;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.check-popup-cancel-button:hover {
+  background: #f5f8fc;
 }
 
 .check-popup-badge {
