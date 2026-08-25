@@ -1,0 +1,531 @@
+import { useEffect, useMemo, useState } from 'react'
+import './App.css'
+
+const categoryNames = {
+  scam: 'scam/หลอกลวง',
+  spam: 'สแปม/โทรซ้ำ',
+  debt: 'เรียกหนี้/กดดัน',
+  impersonation: 'แอบอ้างหน่วยงาน',
+  harassment: 'คุกคาม/รังควาน',
+}
+
+const severityWeight = {
+  low: 1,
+  medium: 2,
+  high: 3,
+}
+
+const normalizePhone = (value) => value.replace(/[^0-9]/g, '')
+const acceptedPhoneLengths = [3, 4, 9, 10]
+const isValidPhoneLength = (value) => acceptedPhoneLengths.includes(value.length)
+
+const formatReportedAt = (value) => new Intl.DateTimeFormat('th-TH', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+}).format(new Date(value))
+
+const formatReportedDate = (value) => new Intl.DateTimeFormat('th-TH', {
+  dateStyle: 'medium',
+}).format(new Date(value))
+
+const formatReportedTime = (value) => new Intl.DateTimeFormat('th-TH', {
+  hour: '2-digit',
+  minute: '2-digit',
+}).format(new Date(value))
+
+const getRiskLevel = (score) => {
+  if (score >= 75) return 'สูง'
+  if (score >= 40) return 'กลาง'
+  return 'ต่ำ'
+}
+
+const getScoreColor = (score) => {
+  if (score >= 75) return '#f97316'
+  if (score >= 40) return '#facc15'
+  return '#34d399'
+}
+
+function App() {
+  const [reports, setReports] = useState([])
+
+  useEffect(() => {
+    fetch('/api/reports')
+      .then((response) => response.json())
+      .then(setReports)
+      .catch(() => setReports([]))
+  }, [])
+
+  const [activeTab, setActiveTab] = useState('check')
+  const [checkPhone, setCheckPhone] = useState('')
+  const [searchResult, setSearchResult] = useState(null)
+  const [checkPopup, setCheckPopup] = useState(null)
+  const [successReport, setSuccessReport] = useState(null)
+  const [reportError, setReportError] = useState('')
+  const [form, setForm] = useState({
+    phone: '',
+    category: '',
+    damage: '',
+    requestedInfo: '',
+    hasLink: '',
+    evidence: '',
+    evidenceFile: '',
+    link: '',
+    detail: '',
+  })
+
+  const historyByPhone = useMemo(() => {
+    const map = {}
+
+    reports.forEach((report) => {
+      const key = report.phone
+      if (!map[key]) {
+        map[key] = { phone: key, count: 0, maxSeverity: 0, categoryCounts: {}, damageTotal: 0, evidenceTotal: 0 }
+      }
+
+      const entry = map[key]
+      entry.count += 1
+      entry.maxSeverity = Math.max(entry.maxSeverity, severityWeight[report.severity] || 0)
+      entry.categoryCounts[report.category] = (entry.categoryCounts[report.category] || 0) + 1
+      entry.damageTotal += report.damage === 'high' ? 3 : report.damage === 'medium' ? 2 : 1
+      entry.evidenceTotal += report.evidence ? 1 : 0
+    })
+
+    return Object.values(map)
+      .map((entry) => {
+        const highestCategory = Object.entries(entry.categoryCounts).sort((a, b) => b[1] - a[1])[0]
+        const riskScore = Math.min(100, entry.count * 12 + entry.maxSeverity * 18 + entry.damageTotal * 5 + entry.evidenceTotal * 8)
+        return {
+          phone: entry.phone,
+          count: entry.count,
+          riskScore,
+          riskLevel: getRiskLevel(riskScore),
+          highestCategory: highestCategory ? categoryNames[highestCategory[0]] : 'ไม่ระบุ',
+        }
+      })
+      .sort((a, b) => b.riskScore - a.riskScore)
+  }, [reports])
+
+  const ownHistoryByPhone = useMemo(() => {
+    const map = {}
+
+    reports.filter((report) => report.ownerDevice).forEach((report) => {
+      const key = report.phone
+      if (!map[key]) map[key] = { phone: key, count: 0, maxSeverity: 0, latestReportedAt: null }
+
+      map[key].count += 1
+      map[key].maxSeverity = Math.max(map[key].maxSeverity, severityWeight[report.severity] || 0)
+      map[key].latestReportedAt = report.reportedAt || report.date
+    })
+
+    return Object.values(map)
+      .map((entry) => ({
+        ...entry,
+        riskLevel: getRiskLevel(Math.min(100, entry.count * 18 + entry.maxSeverity * 18)),
+      }))
+      .sort((a, b) => b.maxSeverity - a.maxSeverity || b.count - a.count)
+  }, [reports])
+
+  const yesterdayInsight = useMemo(() => {
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayDate = yesterday.toISOString().slice(0, 10)
+    const yesterdayReports = reports.filter((report) => report.date === yesterdayDate)
+    const categoryCounts = yesterdayReports.reduce((counts, report) => {
+      counts[report.category] = (counts[report.category] || 0) + 1
+      return counts
+    }, {})
+    const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]
+    if (!topCategory || !yesterdayReports.length) return null
+    const category = categoryNames[topCategory[0]] || topCategory[0]
+
+    return {
+      category,
+      reportCount: yesterdayReports.length,
+      share: Math.round((topCategory[1] / yesterdayReports.length) * 100),
+      summary: `พบการรายงานประเภท${category}สูงที่สุดจากข้อมูลที่ระบบวิเคราะห์ได้เมื่อวานนี้`,
+    }
+  }, [reports])
+
+  useEffect(() => {
+    const normalized = normalizePhone(checkPhone)
+    if (!normalized) {
+      setSearchResult(null)
+      return
+    }
+
+    if (!isValidPhoneLength(normalized)) {
+      setSearchResult({ phone: normalized, detail: 'กรุณากรอกเบอร์โทรศัพท์ 3, 4, 9 หรือ 10 หลัก' })
+      return
+    }
+
+    const match = historyByPhone.find((entry) => entry.phone === normalized)
+    if (!match) {
+      setSearchResult({
+        phone: normalized,
+        riskScore: 0,
+        riskLevel: 'ต่ำ',
+        detail: 'ยังไม่มีประวัติที่เคยถูกรายงานในระบบ',
+      })
+      return
+    }
+
+    setSearchResult({
+      phone: match.phone,
+      riskScore: match.riskScore,
+      riskLevel: match.riskLevel,
+      detail: `${match.highestCategory} เป็นประเด็นหลัก โดยมี ${match.count} รายงานในฐานข้อมูล`,
+    })
+  }, [checkPhone, historyByPhone])
+
+  const handleCheckSubmit = (event) => {
+    event.preventDefault()
+    const normalized = normalizePhone(checkPhone)
+    setCheckPhone(normalized)
+
+    if (!isValidPhoneLength(normalized)) {
+      setCheckPopup({
+        phone: normalized,
+        title: 'รูปแบบเบอร์ไม่ถูกต้อง',
+        detail: 'กรุณากรอกเบอร์โทรศัพท์ 3, 4, 9 หรือ 10 หลัก',
+        found: false,
+      })
+      return
+    }
+
+    const match = historyByPhone.find((entry) => entry.phone === normalized)
+    setCheckPopup(match ? {
+      phone: normalized,
+      title: 'เบอร์นี้เคยถูกรายงาน',
+      detail: `${match.highestCategory} เป็นประเด็นหลัก โดยมี ${match.count} รายงานในระบบ`,
+      found: true,
+      riskLevel: match.riskLevel,
+    } : {
+      phone: normalized,
+      title: 'เบอร์นี้ยังไม่มีรายงาน',
+      detail: 'ไม่พบข้อมูลการรายงานเบอร์นี้ในระบบ',
+      found: false,
+    })
+  }
+
+  const handleReportSubmit = async (event) => {
+    event.preventDefault()
+
+    const phone = normalizePhone(form.phone)
+    if (!isValidPhoneLength(phone) || !form.category || !form.requestedInfo) {
+      setReportError('กรุณากรอกเบอร์ เลือกประเภท และเลือกข้อมูลที่ถูกขอให้ครบ')
+      return
+    }
+    if (form.evidence === 'yes' && !form.evidenceFile) {
+      setReportError('กรุณาแนบภาพหรือไฟล์หลักฐานก่อนส่งรายงาน')
+      return
+    }
+    setReportError('')
+
+    const newReport = {
+      id: Date.now(),
+      phone,
+      category: form.category,
+      severity: form.damage === 'high' ? 'high' : 'medium',
+      damage: form.damage,
+      evidence: form.evidence === 'yes',
+      requestedInfo: form.requestedInfo,
+      hasLink: form.hasLink,
+      link: form.link,
+      evidenceFile: form.evidenceFile,
+      detail: form.detail || 'รายงานด้วยข้อมูลทั่วไป',
+      status: 'pending',
+      ownerDevice: true,
+      reportedAt: new Date().toISOString(),
+      date: new Date().toLocaleDateString('en-CA'),
+    }
+
+    const response = await fetch('/api/reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newReport),
+    })
+    if (!response.ok) return
+
+    const savedReport = await response.json()
+    setReports((previous) => [savedReport, ...previous])
+    setCheckPhone(phone)
+    setSuccessReport(newReport)
+    setForm({
+      phone: '',
+      category: '',
+
+      
+      damage: '',
+      requestedInfo: '',
+      hasLink: '',
+      evidence: '',
+      evidenceFile: '',
+      link: '',
+      detail: '',
+    })
+    setActiveTab('check')
+  }
+
+  const renderTabContent = () => {
+    if (activeTab === 'report') {
+      return (
+        <div className="tab-screen report-screen">
+          <div className="check-header">
+            <div className="check-icon">📬</div>
+            <span>แจ้งเบอร์</span>
+          </div>
+
+          <h2>แจ้งเบอร์</h2>
+          <p>กรอกข้อมูลให้ครบ เพื่อช่วยคัดกรองความเสี่ยง</p>
+
+          <form onSubmit={handleReportSubmit} className="report-form">
+            <label>
+              เบอร์โทรศัพท์
+              <input
+                type="tel"
+                required
+                value={form.phone}
+                onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                placeholder="0812345678"
+              />
+            </label>
+
+            <label>
+              ประเภท <span className="required-mark">*</span>
+              <div className="filter-chips" role="group" aria-label="ประเภทการหลอกลวง">
+                {[
+                  ['scam', 'แอบอ้างหน่วยงานรัฐ'],
+                  ['bank', 'แอบอ้างธนาคาร'],
+                  ['spam', 'เอกชน/ขนส่ง'],
+                  ['ai_voice', 'ปลอมเสียงคนรู้จัก'],
+                  ['impersonation', 'หลอกลงทุน'],
+                  ['loan', 'ปล่อยกู้'],
+                  ['prize', 'รับรางวัล'],
+                ].map(([value, label]) => (
+                  <button key={value} type="button" className={form.category === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, category: value })}>{label}</button>
+                ))}
+              </div>
+            </label>
+
+            <label>
+              ขอข้อมูลอะไร <span className="required-mark">*</span>
+              <div className="filter-chips" role="group" aria-label="ข้อมูลที่ถูกขอ">
+                {['ข้อมูลส่วนตัว', 'ข้อมูลทางการเงิน', 'รหัส OTP', 'รหัสผ่าน', 'อื่น ๆ'].map((value) => (
+                  <button key={value} type="button" className={form.requestedInfo === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, requestedInfo: value })}>{value}</button>
+                ))}
+              </div>
+            </label>
+
+            <fieldset className="form-fieldset">
+              <legend>ส่งลิงก์หรือไม่</legend>
+              <div className="filter-chips">
+                {[['yes', 'มีลิงก์'], ['no', 'ไม่มีลิงก์']].map(([value, label]) => (
+                  <button key={value} type="button" className={form.hasLink === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, hasLink: value, link: value === 'no' ? '' : form.link })}>{label}</button>
+                ))}
+              </div>
+              {form.hasLink === 'yes' ? <input type="url" value={form.link} onChange={(event) => setForm({ ...form, link: event.target.value })} placeholder="https://example.com" /> : null}
+            </fieldset>
+
+            <fieldset className="form-fieldset">
+              <legend>ความเสียหาย</legend>
+              <div className="filter-chips">
+                {[['low', 'ไม่ได้รับความเสียหาย'], ['medium', 'ข้อมูลรั่วไหล'], ['high', 'เสียเงิน']].map(([value, label]) => (
+                  <button key={value} type="button" className={form.damage === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, damage: value })}>{label}</button>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="form-fieldset">
+              <legend>หลักฐาน</legend>
+              <div className="filter-chips">
+                {[['yes', 'มีหลักฐาน'], ['no', 'ไม่มีหลักฐาน']].map(([value, label]) => (
+                  <button key={value} type="button" className={form.evidence === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, evidence: value, evidenceFile: value === 'no' ? '' : form.evidenceFile })}>{label}</button>
+                ))}
+              </div>
+              {form.evidence === 'yes' ? <input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => setForm({ ...form, evidenceFile: event.target.files[0]?.name || '' })} /> : null}
+              {form.evidenceFile ? <small className="file-name">ไฟล์ที่เลือก: {form.evidenceFile}</small> : null}
+              {reportError && form.evidence === 'yes' && !form.evidenceFile ? <small className="form-error">{reportError}</small> : null}
+            </fieldset>
+
+            <label>
+              รายละเอียด
+              <textarea
+                rows="3"
+                value={form.detail}
+                onChange={(event) => setForm({ ...form, detail: event.target.value })}
+                placeholder="อธิบายเหตุการณ์ที่เกิดขึ้น"
+              />
+            </label>
+
+            <button type="submit" className="submit-button">บันทึกรายงาน</button>
+            {reportError && !(form.evidence === 'yes' && !form.evidenceFile) ? <small className="form-error form-error-general">{reportError}</small> : null}
+          </form>
+        </div>
+      )
+    }
+
+    if (activeTab === 'history') {
+      return (
+        <div className="tab-screen history-screen">
+          <div className="check-header">
+            <div className="check-icon">☰</div>
+            <span>ประวัติ</span>
+          </div>
+
+          <h2>ฐานข้อมูล</h2>
+          <p>เบอร์ที่คุณเคยรายงานจากอุปกรณ์นี้</p>
+
+          <div className="history-list">
+            {ownHistoryByPhone.map((entry, index) => (
+              <div key={entry.phone} className="history-row">
+                <span>#{index + 1}</span>
+                <div className="history-phone">
+                  <strong>{entry.phone}</strong>
+                  <small>แจ้งเมื่อ {formatReportedAt(entry.latestReportedAt)}</small>
+                </div>
+                <em>{entry.riskLevel}</em>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="tab-screen check-screen">
+        {yesterdayInsight ? <section className="insight-popup" aria-label="รายงานการหลอกลวงสูงสุดเมื่อวานนี้">
+          <h3>📈 รายงานการหลอกลวงสูงสุดเมื่อวานนี้</h3>
+
+          <div className="insight-main">
+            <div className="insight-gauge" style={{ background: `conic-gradient(#f04438 ${yesterdayInsight.share}%, #ff8b3d ${yesterdayInsight.share}% 100%)` }}>
+              <div className="insight-gauge-inner">
+                <strong>{yesterdayInsight.share}%</strong>
+                <span>จากรายงานทั้งหมด</span>
+              </div>
+            </div>
+
+            <div className="insight-details">
+              <div className="insight-row">
+                <span className="insight-icon category-icon">👮</span>
+                <div>
+                  <small>ประเภท</small>
+                  <strong>{yesterdayInsight.category}</strong>
+                </div>
+              </div>
+              <div className="insight-divider" />
+              <div className="insight-row">
+                <span className="insight-icon report-icon">📄</span>
+                <div>
+                  <small>จำนวน</small>
+                  <strong>{yesterdayInsight.reportCount} รายงาน</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="insight-summary">
+            <span>🚨</span>
+            <p><strong>สรุป:</strong> {yesterdayInsight.summary}</p>
+            <span className="summary-arrow">›</span>
+          </div>
+        </section> : <div className="empty-insight">ยังไม่มีข้อมูลเพียงพอสำหรับการวิเคราะห์รายงานสูงสุด</div>}
+
+        <div className="check-header">
+          <div className="check-icon">🔍</div>
+          <span>ตรวจสอบเบอร์</span>
+        </div>
+
+        <h2>ตรวจสอบเบอร์</h2>
+        <p>กรอกเบอร์โทรศัพท์เพื่อดูระดับความเสี่ยง</p>
+
+        <form onSubmit={handleCheckSubmit} className="check-form">
+          <input
+            type="tel"
+            value={checkPhone}
+            onChange={(event) => setCheckPhone(normalizePhone(event.target.value))}
+            placeholder="กรอกเบอร์โทรศัพท์"
+          />
+          <button type="submit">ตรวจสอบ</button>
+        </form>
+
+      </div>
+    )
+  }
+
+  return (
+    <div className="phone-frame">
+      {renderTabContent()}
+
+      <nav className="bottom-nav" aria-label="main navigation">
+        <button type="button" className={activeTab === 'check' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('check')}>
+          <span className="nav-icon">🔍</span>
+          <span>ตรวจสอบ</span>
+        </button>
+        <button type="button" className={activeTab === 'report' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('report')}>
+          <span className="nav-icon">📬</span>
+          <span>แจ้งเบอร์</span>
+        </button>
+        <button type="button" className={activeTab === 'history' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('history')}>
+          <span className="nav-icon">☰</span>
+          <span>ประวัติ</span>
+        </button>
+      </nav>
+
+      {successReport ? (
+        <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="success-title">
+          <section className="success-modal">
+            <button type="button" className="modal-close" aria-label="ปิด" onClick={() => setSuccessReport(null)}>×</button>
+
+            <div className="success-mark" aria-hidden="true">
+              <span>✓</span>
+            </div>
+            <h2 id="success-title">รายงานของคุณถูกส่งเรียบร้อยแล้ว!</h2>
+            <p className="success-lead">ขอบคุณที่ช่วยกันสร้างสังคมปลอดภัยจากมิจฉาชีพ</p>
+
+            <div className="success-report-card">
+              <div className="success-number-row">
+                <span className="success-card-icon">❗</span>
+                <div>
+                  <small>หมายเลขที่คุณรายงาน</small>
+                  <strong>{successReport.phone}</strong>
+                </div>
+              </div>
+              <div className="success-meta">
+                <span><i aria-hidden="true">📅</i><span><small>วันที่รายงาน</small><strong>{formatReportedDate(successReport.reportedAt)}</strong></span></span>
+                <span><i aria-hidden="true">🕒</i><span><small>เวลา</small><strong>{formatReportedTime(successReport.reportedAt)} น.</strong></span></span>
+              </div>
+            </div>
+
+            <div className="success-note">
+              <span>✓</span>
+              <div>
+                <strong>ร่วมสร้างชุมชนที่ปลอดภัย</strong>
+                <p>ข้อมูลของคุณจะถูกนำไปวิเคราะห์เพื่อป้องกันและช่วยเหลือผู้อื่นจากการถูกหลอกลวง</p>
+              </div>
+            </div>
+
+            <button type="button" className="success-home-button" onClick={() => { setSuccessReport(null); setActiveTab('check') }}>กลับหน้าหลัก</button>
+            <button type="button" className="success-history-button" onClick={() => { setSuccessReport(null); setActiveTab('history') }}>ดูรายงานของฉัน</button>
+          </section>
+        </div>
+      ) : null}
+
+      {checkPopup ? (
+        <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="check-popup-title">
+          <section className="check-popup-modal">
+            <button type="button" className="modal-close" aria-label="ปิด" onClick={() => setCheckPopup(null)}>×</button>
+            <div className={checkPopup.found ? 'check-popup-icon found' : 'check-popup-icon'}>{checkPopup.found ? '✓' : 'i'}</div>
+            <h2 id="check-popup-title">{checkPopup.title}</h2>
+            <p className="check-popup-phone">{checkPopup.phone}</p>
+            <p className="check-popup-detail">{checkPopup.detail}</p>
+            {checkPopup.riskLevel ? <span className="check-popup-badge">ระดับความเสี่ยง {checkPopup.riskLevel}</span> : null}
+            <button type="button" className="success-home-button" onClick={() => setCheckPopup(null)}>ปิด</button>
+          </section>
+        </div>
+      ) : null}
+
+    </div>
+  )
+}
+
+export default App
