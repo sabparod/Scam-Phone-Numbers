@@ -103,8 +103,11 @@ function App() {
   const [form, setForm] = useState({
     phone: '',
     category: '',
+    categoryOther: '',
     damage: '',
+    damageOther: '',
     requestedInfo: '',
+    requestedInfoOther: '',
     hasLink: '',
     evidence: '',
     evidenceFile: '',
@@ -256,8 +259,11 @@ function App() {
     event.preventDefault()
 
     const phone = normalizePhone(form.phone)
-    if (!isValidPhoneLength(phone) || !form.category || !form.requestedInfo) {
-      setReportError('กรุณากรอกเบอร์ เลือกประเภท และเลือกข้อมูลที่ถูกขอให้ครบ')
+    const category = form.category === 'other' ? form.categoryOther.trim() : form.category
+    const requestedInfo = form.requestedInfo === 'other' ? form.requestedInfoOther.trim() : form.requestedInfo
+    const damage = form.damage === 'other' ? form.damageOther.trim() : form.damage
+    if (!isValidPhoneLength(phone) || !category || !requestedInfo || (form.damage === 'other' && !damage)) {
+      setReportError('กรุณากรอกเบอร์ เลือกประเภท ข้อมูลที่ถูกขอ และกรอกตัวเลือกอื่นๆ ให้ครบ')
       return
     }
     if (form.evidence === 'yes' && !form.evidenceFile) {
@@ -269,11 +275,11 @@ function App() {
     const newReport = {
       id: Date.now(),
       phone,
-      category: form.category,
+      category,
       severity: form.damage === 'high' ? 'high' : 'medium',
-      damage: form.damage,
+      damage,
       evidence: form.evidence === 'yes',
-      requestedInfo: form.requestedInfo,
+      requestedInfo,
       hasLink: form.hasLink,
       link: form.link,
       evidenceFile: form.evidenceFile,
@@ -302,10 +308,11 @@ function App() {
     setForm({
       phone: '',
       category: '',
-
-      
+      categoryOther: '',
       damage: '',
+      damageOther: '',
       requestedInfo: '',
+      requestedInfoOther: '',
       hasLink: '',
       evidence: '',
       evidenceFile: '',
@@ -319,92 +326,104 @@ function App() {
     if (activeTab === 'report') {
       return (
         <div className="tab-screen report-screen">
+          <button type="button" className="back-button" onClick={() => setActiveTab('check')}>
+            <span aria-hidden="true">←</span>
+            <span>ย้อนกลับ</span>
+          </button>
+
           <div className="check-header">
             <div className="check-icon">📬</div>
-            <span>รายงานเบอร์</span>
+            <h2>รายงานหมายเลขโทรศัพท์</h2>
           </div>
 
-          <h2>รายงานเบอร์</h2>
-          <p>กรอกข้อมูลให้ครบ เพื่อช่วยคัดกรองความเสี่ยง</p>
-
           <form onSubmit={handleReportSubmit} className="report-form">
-            <label>
-              เบอร์โทรศัพท์
-              <input
-                type="tel"
-                required
-                value={form.phone}
-                onChange={(event) => setForm({ ...form, phone: event.target.value })}
-                placeholder="0812345678"
-              />
-            </label>
+            <section className="form-section">
+              <label>
+                หมายเลขโทรศัพท์
+                <input
+                  type="tel"
+                  required
+                  value={form.phone}
+                  onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                  placeholder="0812345678"
+                />
+              </label>
 
-            <label>
-              ประเภท <span className="required-mark">*</span>
-              <div className="filter-chips" role="group" aria-label="ประเภทการหลอกลวง">
-                {[
-                  ['scam', 'แอบอ้างหน่วยงานรัฐ'],
-                  ['bank', 'แอบอ้างธนาคาร'],
-                  ['spam', 'เอกชน/ขนส่ง'],
-                  ['ai_voice', 'ปลอมเสียงคนรู้จัก'],
-                  ['impersonation', 'หลอกลงทุน'],
-                  ['loan', 'ปล่อยกู้'],
-                  ['prize', 'รับรางวัล'],
-                ].map(([value, label]) => (
-                  <button key={value} type="button" className={form.category === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, category: value })}>{label}</button>
-                ))}
-              </div>
-            </label>
+              <label>
+                ประเภท <span className="required-mark">*</span>
+                <div className="filter-chips" role="group" aria-label="ประเภทการหลอกลวง">
+                  {[
+                    ['scam', 'แอบอ้างหน่วยงานรัฐ'],
+                    ['bank', 'แอบอ้างธนาคาร'],
+                    ['spam', 'เอกชน/ขนส่ง'],
+                    ['ai_voice', 'ปลอมเสียงคนรู้จัก'],
+                    ['impersonation', 'หลอกลงทุน'],
+                    ['loan', 'ปล่อยกู้'],
+                    ['prize', 'รับรางวัล'],
+                    ['other', 'อื่นๆ'],
+                  ].map(([value, label]) => (
+                    <button key={value} type="button" className={form.category === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, category: value })}>{label}</button>
+                  ))}
+                </div>
+                {form.category === 'other' ? <input type="text" required value={form.categoryOther} onChange={(event) => setForm({ ...form, categoryOther: event.target.value })} placeholder="ระบุประเภทการหลอกลวง" /> : null}
+              </label>
 
-            <label>
-              ขอข้อมูลอะไร <span className="required-mark">*</span>
-              <div className="filter-chips" role="group" aria-label="ข้อมูลที่ถูกขอ">
-                {['ข้อมูลส่วนตัว', 'ข้อมูลทางการเงิน', 'รหัส OTP', 'รหัสผ่าน', 'อื่น ๆ'].map((value) => (
-                  <button key={value} type="button" className={form.requestedInfo === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, requestedInfo: value })}>{value}</button>
-                ))}
-              </div>
-            </label>
+              <label>
+                ขอข้อมูลอะไร <span className="required-mark">*</span>
+                <div className="filter-chips" role="group" aria-label="ข้อมูลที่ถูกขอ">
+                  {['ข้อมูลส่วนตัว', 'ข้อมูลทางการเงิน', 'รหัส OTP', 'รหัสผ่าน', 'other'].map((value) => (
+                    <button key={value} type="button" className={form.requestedInfo === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, requestedInfo: value })}>{value === 'other' ? 'อื่นๆ' : value}</button>
+                  ))}
+                </div>
+                {form.requestedInfo === 'other' ? <input type="text" required value={form.requestedInfoOther} onChange={(event) => setForm({ ...form, requestedInfoOther: event.target.value })} placeholder="ระบุข้อมูลที่ถูกขอ" /> : null}
+              </label>
+            </section>
 
-            <fieldset className="form-fieldset">
-              <legend>ส่งลิงก์หรือไม่</legend>
-              <div className="filter-chips">
-                {[['yes', 'มีลิงก์'], ['no', 'ไม่มีลิงก์']].map(([value, label]) => (
-                  <button key={value} type="button" className={form.hasLink === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, hasLink: value, link: value === 'no' ? '' : form.link })}>{label}</button>
-                ))}
-              </div>
-              {form.hasLink === 'yes' ? <input type="url" value={form.link} onChange={(event) => setForm({ ...form, link: event.target.value })} placeholder="https://example.com" /> : null}
-            </fieldset>
+            <section className="form-section">
+              <fieldset className="form-fieldset">
+                <legend>ส่งลิงก์หรือไม่</legend>
+                <div className="filter-chips">
+                  {[['yes', 'มีลิงก์'], ['no', 'ไม่มีลิงก์']].map(([value, label]) => (
+                    <button key={value} type="button" className={form.hasLink === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, hasLink: value, link: value === 'no' ? '' : form.link })}>{label}</button>
+                  ))}
+                </div>
+                {form.hasLink === 'yes' ? <input type="url" value={form.link} onChange={(event) => setForm({ ...form, link: event.target.value })} placeholder="https://example.com" /> : null}
+              </fieldset>
 
-            <fieldset className="form-fieldset">
-              <legend>ความเสียหาย</legend>
-              <div className="filter-chips">
-                {[['low', 'ไม่ได้รับความเสียหาย'], ['medium', 'ข้อมูลรั่วไหล'], ['high', 'เสียเงิน']].map(([value, label]) => (
-                  <button key={value} type="button" className={form.damage === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, damage: value })}>{label}</button>
-                ))}
-              </div>
-            </fieldset>
+              <fieldset className="form-fieldset">
+                <legend>ความเสียหาย</legend>
+                <div className="filter-chips">
+                  {[['low', 'ไม่ได้รับความเสียหาย'], ['medium', 'ข้อมูลรั่วไหล'], ['high', 'เสียเงิน'], ['other', 'อื่นๆ']].map(([value, label]) => (
+                    <button key={value} type="button" className={form.damage === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, damage: value })}>{label}</button>
+                  ))}
+                </div>
+                {form.damage === 'other' ? <input type="text" required value={form.damageOther} onChange={(event) => setForm({ ...form, damageOther: event.target.value })} placeholder="ระบุความเสียหาย" /> : null}
+              </fieldset>
 
-            <fieldset className="form-fieldset">
-              <legend>หลักฐาน</legend>
-              <div className="filter-chips">
-                {[['yes', 'มีหลักฐาน'], ['no', 'ไม่มีหลักฐาน']].map(([value, label]) => (
-                  <button key={value} type="button" className={form.evidence === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, evidence: value, evidenceFile: value === 'no' ? '' : form.evidenceFile })}>{label}</button>
-                ))}
-              </div>
-              {form.evidence === 'yes' ? <input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => setForm({ ...form, evidenceFile: event.target.files[0]?.name || '' })} /> : null}
-              {form.evidenceFile ? <small className="file-name">ไฟล์ที่เลือก: {form.evidenceFile}</small> : null}
-              {reportError && form.evidence === 'yes' && !form.evidenceFile ? <small className="form-error">{reportError}</small> : null}
-            </fieldset>
+              <fieldset className="form-fieldset">
+                <legend>หลักฐาน</legend>
+                <div className="filter-chips">
+                  {[['yes', 'มีหลักฐาน'], ['no', 'ไม่มีหลักฐาน']].map(([value, label]) => (
+                    <button key={value} type="button" className={form.evidence === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, evidence: value, evidenceFile: value === 'no' ? '' : form.evidenceFile })}>{label}</button>
+                  ))}
+                </div>
+                {form.evidence === 'yes' ? <input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => setForm({ ...form, evidenceFile: event.target.files[0]?.name || '' })} /> : null}
+                {form.evidenceFile ? <small className="file-name">ไฟล์ที่เลือก: {form.evidenceFile}</small> : null}
+                {reportError && form.evidence === 'yes' && !form.evidenceFile ? <small className="form-error">{reportError}</small> : null}
+              </fieldset>
+            </section>
 
-            <label>
-              รายละเอียด
-              <textarea
-                rows="3"
-                value={form.detail}
-                onChange={(event) => setForm({ ...form, detail: event.target.value })}
-                placeholder="อธิบายเหตุการณ์ที่เกิดขึ้น"
-              />
-            </label>
+            <section className="form-section">
+              <label>
+                รายละเอียด
+                <textarea
+                  rows="3"
+                  value={form.detail}
+                  onChange={(event) => setForm({ ...form, detail: event.target.value })}
+                  placeholder="อธิบายเหตุการณ์ที่เกิดขึ้น"
+                />
+              </label>
+            </section>
 
             <button type="submit" className="submit-button">บันทึกรายงาน</button>
             {reportError && !(form.evidence === 'yes' && !form.evidenceFile) ? <small className="form-error form-error-general">{reportError}</small> : null}
@@ -481,18 +500,15 @@ function App() {
 
         <div className="check-header">
           <div className="check-icon">🔍</div>
-          <span>ตรวจสอบเบอร์</span>
+          <h2>ตรวจสอบหมายเลขโทรศัพท์</h2>
         </div>
-
-        <h2>ตรวจสอบเบอร์</h2>
-        <p>กรอกเบอร์โทรศัพท์เพื่อดูระดับความเสี่ยง</p>
 
         <form onSubmit={handleCheckSubmit} className="check-form">
           <input
             type="tel"
             value={checkPhone}
             onChange={(event) => setCheckPhone(normalizePhone(event.target.value))}
-            placeholder="กรอกเบอร์โทรศัพท์"
+            placeholder="กรอกหมายเลขโทรศัพท์"
           />
           <button type="submit">ตรวจสอบ</button>
         </form>
@@ -508,11 +524,11 @@ function App() {
       <nav className="bottom-nav" aria-label="main navigation">
         <button type="button" className={activeTab === 'check' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('check')}>
           <span className="nav-icon">🔍</span>
-          <span>ตรวจสอบ</span>
+          <span>ตรวจสอบหมายเลขโทรศัพท์</span>
         </button>
         <button type="button" className={activeTab === 'report' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('report')}>
           <span className="nav-icon">📬</span>
-          <span>รายงานเบอร์</span>
+          <span>รายงานหมายเลขโทรศัพท์</span>
         </button>
         <button type="button" className={activeTab === 'history' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('history')}>
           <span className="nav-icon">☰</span>
