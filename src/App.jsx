@@ -255,6 +255,14 @@ function App() {
     setActiveTab('report')
   }
 
+  const toggleReportOption = (field, value, extra = {}) => {
+    setForm((previous) => ({
+      ...previous,
+      ...extra,
+      [field]: previous[field] === value ? '' : value,
+    }))
+  }
+
   const handleReportSubmit = async (event) => {
     event.preventDefault()
 
@@ -362,7 +370,7 @@ function App() {
                     ['prize', 'รับรางวัล'],
                     ['other', 'อื่นๆ'],
                   ].map(([value, label]) => (
-                    <button key={value} type="button" className={form.category === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, category: value })}>{label}</button>
+                    <button key={value} type="button" className={form.category === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => toggleReportOption('category', value, value === 'other' ? { categoryOther: '' } : {})}>{label}</button>
                   ))}
                 </div>
                 {form.category === 'other' ? <input type="text" required value={form.categoryOther} onChange={(event) => setForm({ ...form, categoryOther: event.target.value })} placeholder="ระบุประเภทการหลอกลวง" /> : null}
@@ -372,7 +380,7 @@ function App() {
                 ขอข้อมูลอะไร <span className="required-mark">*</span>
                 <div className="filter-chips" role="group" aria-label="ข้อมูลที่ถูกขอ">
                   {['ข้อมูลส่วนตัว', 'ข้อมูลทางการเงิน', 'รหัส OTP', 'รหัสผ่าน', 'other'].map((value) => (
-                    <button key={value} type="button" className={form.requestedInfo === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, requestedInfo: value })}>{value === 'other' ? 'อื่นๆ' : value}</button>
+                    <button key={value} type="button" className={form.requestedInfo === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => toggleReportOption('requestedInfo', value, value === 'other' ? { requestedInfoOther: '' } : {})}>{value === 'other' ? 'อื่นๆ' : value}</button>
                   ))}
                 </div>
                 {form.requestedInfo === 'other' ? <input type="text" required value={form.requestedInfoOther} onChange={(event) => setForm({ ...form, requestedInfoOther: event.target.value })} placeholder="ระบุข้อมูลที่ถูกขอ" /> : null}
@@ -384,7 +392,7 @@ function App() {
                 <legend>ส่งลิงก์หรือไม่</legend>
                 <div className="filter-chips">
                   {[['yes', 'มีลิงก์'], ['no', 'ไม่มีลิงก์']].map(([value, label]) => (
-                    <button key={value} type="button" className={form.hasLink === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, hasLink: value, link: value === 'no' ? '' : form.link })}>{label}</button>
+                    <button key={value} type="button" className={form.hasLink === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => toggleReportOption('hasLink', value, value === 'no' ? { link: '' } : {})}>{label}</button>
                   ))}
                 </div>
                 {form.hasLink === 'yes' ? <input type="url" value={form.link} onChange={(event) => setForm({ ...form, link: event.target.value })} placeholder="https://example.com" /> : null}
@@ -394,7 +402,7 @@ function App() {
                 <legend>ความเสียหาย</legend>
                 <div className="filter-chips">
                   {[['low', 'ไม่ได้รับความเสียหาย'], ['medium', 'ข้อมูลรั่วไหล'], ['high', 'เสียเงิน'], ['other', 'อื่นๆ']].map(([value, label]) => (
-                    <button key={value} type="button" className={form.damage === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, damage: value })}>{label}</button>
+                    <button key={value} type="button" className={form.damage === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => toggleReportOption('damage', value, value === 'other' ? { damageOther: '' } : {})}>{label}</button>
                   ))}
                 </div>
                 {form.damage === 'other' ? <input type="text" required value={form.damageOther} onChange={(event) => setForm({ ...form, damageOther: event.target.value })} placeholder="ระบุความเสียหาย" /> : null}
@@ -404,7 +412,7 @@ function App() {
                 <legend>หลักฐาน</legend>
                 <div className="filter-chips">
                   {[['yes', 'มีหลักฐาน'], ['no', 'ไม่มีหลักฐาน']].map(([value, label]) => (
-                    <button key={value} type="button" className={form.evidence === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => setForm({ ...form, evidence: value, evidenceFile: value === 'no' ? '' : form.evidenceFile })}>{label}</button>
+                    <button key={value} type="button" className={form.evidence === value ? 'filter-chip selected' : 'filter-chip'} onClick={() => toggleReportOption('evidence', value, value === 'no' ? { evidenceFile: '' } : {})}>{label}</button>
                   ))}
                 </div>
                 {form.evidence === 'yes' ? <input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => setForm({ ...form, evidenceFile: event.target.files[0]?.name || '' })} /> : null}
