@@ -22,10 +22,51 @@ const getReportDetail = (report) => report.highestCategory
   ? `${report.highestCategory} เป็นประเด็นหลัก โดยมี ${report.count} รายงานในระบบ`
   : `มีการรายงานเบอร์นี้ ${report.count} รายงานในระบบ`
 
-const severityWeight = {
-  low: 1,
-  medium: 2,
-  high: 3,
+const categorySeverity = {
+  scam: 3,
+  bank: 3,
+  spam: 1,
+  ai_voice: 3,
+  loan: 2,
+  prize: 2,
+  debt: 2,
+  impersonation: 3,
+  harassment: 2,
+}
+
+const requestedInfoSeverity = {
+  'ข้อมูลส่วนตัว': 2,
+  'ข้อมูลทางการเงิน': 3,
+  'รหัส OTP': 3,
+  'รหัสผ่าน': 3,
+}
+
+const getReportSeverity = (report) => Math.max(
+  categorySeverity[report.category] || 2,
+  requestedInfoSeverity[report.requestedInfo] || 2,
+)
+
+const getDamageValue = (damage) => damage === 'high' ? 3 : damage === 'medium' ? 2 : 1
+
+const getReporterMultiplier = (reporterCount) => {
+  if (reporterCount >= 5) return 1
+  if (reporterCount >= 3) return 0.85
+  if (reporterCount === 2) return 0.7
+  return 0.5
+}
+
+const getRiskScore = (phoneReports) => {
+  const reportCount = phoneReports.length
+  const maxSeverity = Math.max(...phoneReports.map(getReportSeverity), 0)
+  const damageTotal = phoneReports.reduce((total, report) => {
+    const evidenceMultiplier = report.evidence ? 1 : 0.4
+    return total + getDamageValue(report.damage) * evidenceMultiplier
+  }, 0)
+  const evidenceTotal = phoneReports.filter((report) => report.evidence).length
+  const linkTotal = phoneReports.filter((report) => report.hasLink === 'yes' || report.link).length
+  const reporterCount = new Set(phoneReports.map((report) => report.reporterId || 'legacy-reporter')).size
+  const rawScore = reportCount * 12 + maxSeverity * 18 + damageTotal * 5 + evidenceTotal * 8 + linkTotal * 10
+  return Math.min(100, rawScore * getReporterMultiplier(reporterCount))
 }
 
 const normalizePhone = (value) => value.replace(/[^0-9]/g, '')
@@ -66,6 +107,16 @@ const getCheckPopupIcon = (popup) => {
 }
 
 const reportsStorageKey = 'kyn-reports'
+const reporterIdStorageKey = 'kyn-reporter-id'
+
+const getReporterId = () => {
+  let reporterId = localStorage.getItem(reporterIdStorageKey)
+  if (!reporterId) {
+    reporterId = crypto.randomUUID()
+    localStorage.setItem(reporterIdStorageKey, reporterId)
+  }
+  return reporterId
+}
 
 const readLocalReports = () => {
   try {
@@ -121,24 +172,21 @@ function App() {
     reports.forEach((report) => {
       const key = report.phone
       if (!map[key]) {
-        map[key] = { phone: key, count: 0, maxSeverity: 0, categoryCounts: {}, damageTotal: 0, evidenceTotal: 0 }
+        map[key] = { phone: key, reports: [], categoryCounts: {} }
       }
 
       const entry = map[key]
-      entry.count += 1
-      entry.maxSeverity = Math.max(entry.maxSeverity, severityWeight[report.severity] || 0)
+      entry.reports.push(report)
       entry.categoryCounts[report.category] = (entry.categoryCounts[report.category] || 0) + 1
-      entry.damageTotal += report.damage === 'high' ? 3 : report.damage === 'medium' ? 2 : 1
-      entry.evidenceTotal += report.evidence ? 1 : 0
     })
 
     return Object.values(map)
       .map((entry) => {
         const highestCategory = Object.entries(entry.categoryCounts).sort((a, b) => b[1] - a[1])[0]
-        const riskScore = Math.min(100, entry.count * 12 + entry.maxSeverity * 18 + entry.damageTotal * 5 + entry.evidenceTotal * 8)
+        const riskScore = getRiskScore(entry.reports)
         return {
           phone: entry.phone,
-          count: entry.count,
+          count: entry.reports.length,
           riskScore,
           riskLevel: getRiskLevel(riskScore),
           highestCategory: highestCategory ? getCategoryName(highestCategory[0]) : '',
@@ -152,19 +200,19 @@ function App() {
 
     reports.filter((report) => report.ownerDevice).forEach((report) => {
       const key = report.phone
-      if (!map[key]) map[key] = { phone: key, count: 0, maxSeverity: 0, latestReportedAt: null }
+      if (!map[key]) map[key] = { phone: key, reports: [], latestReportedAt: null }
 
-      map[key].count += 1
-      map[key].maxSeverity = Math.max(map[key].maxSeverity, severityWeight[report.severity] || 0)
+      map[key].reports.push(report)
       map[key].latestReportedAt = report.reportedAt || report.date
     })
 
     return Object.values(map)
       .map((entry) => ({
         ...entry,
-        riskLevel: getRiskLevel(Math.min(100, entry.count * 18 + entry.maxSeverity * 18)),
+        count: entry.reports.length,
+        riskLevel: getRiskLevel(getRiskScore(entry.reports)),
       }))
-      .sort((a, b) => b.maxSeverity - a.maxSeverity || b.count - a.count)
+      .sort((a, b) => getRiskScore(b.reports) - getRiskScore(a.reports))
   }, [reports])
 
   const yesterdayInsight = useMemo(() => {
@@ -284,7 +332,7 @@ function App() {
       id: Date.now(),
       phone,
       category,
-      severity: form.damage === 'high' ? 'high' : 'medium',
+      severity: getReportSeverity({ category, requestedInfo }),
       damage,
       evidence: form.evidence === 'yes',
       requestedInfo,
@@ -292,6 +340,7 @@ function App() {
       link: form.link,
       evidenceFile: form.evidenceFile,
       detail: form.detail || 'รายงานด้วยข้อมูลทั่วไป',
+      reporterId: getReporterId(),
       status: 'pending',
       ownerDevice: true,
       reportedAt: new Date().toISOString(),
@@ -358,8 +407,8 @@ function App() {
               </label>
 
               <label>
-                ประเภท <span className="required-mark">*</span>
-                <div className="filter-chips" role="group" aria-label="ประเภทการหลอกลวง">
+                ประเภทผู้แอบอ้าง <span className="required-mark">*</span>
+                <div className="filter-chips" role="group" aria-label="ประเภทผู้แอบอ้าง">
                   {[
                     ['scam', 'แอบอ้างหน่วยงานรัฐ'],
                     ['bank', 'แอบอ้างธนาคาร'],
