@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { supabase } from './lib/supabase'
 
 const categoryNames = {
   scam: 'แอบอ้างหน่วยงานรัฐ',
@@ -132,17 +133,72 @@ const saveLocalReport = (report) => {
   return report
 }
 
+const mapReportFromDatabase = (report) => ({
+  ...report,
+  hasLink: report.has_link,
+  requestedInfo: report.requested_info,
+  evidenceFile: report.evidence_file,
+  reporterId: report.reporter_id,
+  ownerDevice: report.owner_device,
+  reportedAt: report.reported_at,
+})
+
+const mapReportToDatabase = (report) => ({
+  id: report.id,
+  phone: report.phone,
+  category: report.category,
+  severity: report.severity,
+  damage: report.damage,
+  evidence: report.evidence,
+  requested_info: report.requestedInfo,
+  has_link: report.hasLink,
+  link: report.link,
+  evidence_file: report.evidenceFile,
+  detail: report.detail,
+  reporter_id: report.reporterId,
+  status: report.status,
+  owner_device: report.ownerDevice,
+  reported_at: report.reportedAt,
+  date: report.date,
+})
+
 function App() {
   const [reports, setReports] = useState([])
 
   useEffect(() => {
-    fetch('/api/reports')
-      .then((response) => {
-        if (!response.ok) throw new Error('API unavailable')
-        return response.json()
+    if (!supabase) {
+      setReports(readLocalReports())
+      return undefined
+    }
+
+    let isMounted = true
+    const loadReports = async () => {
+      const { data, error } = await supabase
+        .from('reports')
+        .select('*')
+        .order('reported_at', { ascending: false })
+
+      if (isMounted) setReports(error ? readLocalReports() : data.map(mapReportFromDatabase))
+    }
+
+    loadReports()
+    const channel = supabase
+      .channel('reports-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, (payload) => {
+        if (!isMounted || !payload.new?.id) return
+
+        setReports((previous) => {
+          const nextReport = mapReportFromDatabase(payload.new)
+          const withoutCurrent = previous.filter((report) => report.id !== nextReport.id)
+          return payload.eventType === 'DELETE' ? withoutCurrent : [nextReport, ...withoutCurrent]
+        })
       })
-      .then(setReports)
-      .catch(() => setReports(readLocalReports()))
+      .subscribe()
+
+    return () => {
+      isMounted = false
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const [activeTab, setActiveTab] = useState('check')
@@ -348,15 +404,14 @@ function App() {
     }
 
     let savedReport
-    try {
-      const response = await fetch('/api/reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newReport),
-      })
-      if (!response.ok) throw new Error('API unavailable')
-      savedReport = await response.json()
-    } catch {
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('reports')
+        .insert(mapReportToDatabase(newReport))
+        .select()
+        .single()
+      savedReport = error ? saveLocalReport(newReport) : mapReportFromDatabase(data)
+    } else {
       savedReport = saveLocalReport(newReport)
     }
     setReports((previous) => [savedReport, ...previous])
