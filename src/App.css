@@ -631,6 +631,28 @@
   line-height: 1;
 }
 
+.check-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.check-header h2 {
+  margin: 0;
+}
+
+.nav-icon svg {
+  display: block;
+  width: 1.55rem;
+  height: 1.55rem;
+}
+
+.check-icon svg {
+  display: block;
+  width: 1.95rem;
+  height: 1.95rem;
+}
+
 .insight-popup {
   flex-shrink: 0;
   margin: -2px -4px 2px;

@@ -107,6 +107,24 @@ const getCheckPopupIcon = (popup) => {
   return { className: 'check-popup-icon risk-low', icon: '✓' }
 }
 
+const SearchIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+  </svg>
+)
+
+const ReportIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+  </svg>
+)
+
+const HistoryIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6.429 9.75 2.25 12l4.179 2.25m0-4.5 5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0 4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0-5.571 3-5.571-3" />
+  </svg>
+)
+
 const reportsStorageKey = 'kyn-reports'
 const reporterIdStorageKey = 'kyn-reporter-id'
 
@@ -444,7 +462,7 @@ function App() {
           </button>
 
           <div className="check-header">
-            <div className="check-icon">📬</div>
+            <div className="check-icon"><ReportIcon /></div>
             <h2>รายงานหมายเลขโทรศัพท์</h2>
           </div>
 
@@ -548,7 +566,7 @@ function App() {
       return (
         <div className="tab-screen history-screen">
           <div className="check-header">
-            <div className="check-icon">☰</div>
+            <div className="check-icon"><HistoryIcon /></div>
             <span>ประวัติ</span>
           </div>
 
@@ -611,7 +629,7 @@ function App() {
         </section> : <div className="empty-insight">ยังไม่มีข้อมูลเพียงพอสำหรับการวิเคราะห์รายงานสูงสุด</div>}
 
         <div className="check-header">
-          <div className="check-icon">🔍</div>
+          <div className="check-icon"><SearchIcon /></div>
           <h2>ตรวจสอบหมายเลขโทรศัพท์</h2>
         </div>
 
@@ -635,15 +653,15 @@ function App() {
 
       <nav className="bottom-nav" aria-label="main navigation">
         <button type="button" className={activeTab === 'check' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('check')}>
-          <span className="nav-icon">🔍</span>
+          <span className="nav-icon"><SearchIcon /></span>
           <span>ตรวจสอบหมายเลขโทรศัพท์</span>
         </button>
         <button type="button" className={activeTab === 'report' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('report')}>
-          <span className="nav-icon">📬</span>
+          <span className="nav-icon"><ReportIcon /></span>
           <span>รายงานหมายเลขโทรศัพท์</span>
         </button>
         <button type="button" className={activeTab === 'history' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('history')}>
-          <span className="nav-icon">☰</span>
+          <span className="nav-icon"><HistoryIcon /></span>
           <span>ประวัติ</span>
         </button>
       </nav>
