@@ -79,6 +79,12 @@ const getRiskScore = (phoneReports) => {
 const normalizePhone = (value) => value.replace(/[^0-9]/g, '')
 const acceptedPhoneLengths = [3, 4, 9, 10]
 const isValidPhoneLength = (value) => acceptedPhoneLengths.includes(value.length)
+const formatPhoneNumber = (value) => {
+  const phone = normalizePhone(value)
+  if (phone.length === 10) return `${phone.slice(0, 3)}-${phone.slice(3, 6)}-${phone.slice(6)}`
+  if (phone.length === 9) return `${phone.slice(0, 2)}-${phone.slice(2, 5)}-${phone.slice(5)}`
+  return phone
+}
 
 const formatReportedAt = (value) => new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'medium',
@@ -123,6 +129,19 @@ const SearchIcon = () => (
 const ReportIcon = () => (
   <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
     <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+  </svg>
+)
+
+const PhoneIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 3h3l2 5-2 1.5a15 15 0 0 0 6.5 6.5L16 14l5 2v3a2 2 0 0 1-2 2C10 21 3 14 3 5a2 2 0 0 1 2-2Z" />
+  </svg>
+)
+
+const WarningIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.3 4.3 2.8 17.2A1.8 1.8 0 0 0 4.4 20h15.2a1.8 1.8 0 0 0 1.6-2.8L13.7 4.3a2 2 0 0 0-3.4 0Z" />
+    <path strokeLinecap="round" d="M12 9v4m0 3h.01" />
   </svg>
 )
 
@@ -482,6 +501,7 @@ function App() {
     }
     setReportError('')
 
+    const reportedAt = new Date().toISOString()
     const newReport = {
       id: Date.now(),
       phone,
@@ -497,7 +517,7 @@ function App() {
       reporterId: getReporterId(),
       status: 'pending',
       ownerDevice: true,
-      reportedAt: new Date().toISOString(),
+      reportedAt,
       date: new Date().toLocaleDateString('en-CA'),
     }
 
@@ -752,28 +772,28 @@ function App() {
             <div className="success-mark" aria-hidden="true">
               <span>✓</span>
             </div>
-            <h2 id="success-title">รายงานของคุณถูกส่งเรียบร้อยแล้ว!</h2>
+            <h2 id="success-title">ส่งรายงานแล้ว</h2>
             <p className="success-lead">ขอบคุณที่ช่วยกันสร้างสังคมปลอดภัยจากมิจฉาชีพ</p>
 
             <div className="success-report-card">
               <div className="success-number-row">
-                <span className="success-card-icon">❗</span>
+                <span className="success-card-icon"><PhoneIcon /></span>
                 <div>
                   <small>หมายเลขที่คุณรายงาน</small>
-                  <strong>{successReport.phone}</strong>
+                  <strong>{formatPhoneNumber(successReport.phone)}</strong>
                 </div>
               </div>
               <div className="success-meta">
-                <span><i aria-hidden="true">📅</i><span><small>วันที่รายงาน</small><strong>{formatReportedDate(successReport.reportedAt)}</strong></span></span>
-                <span><i aria-hidden="true">🕒</i><span><small>เวลา</small><strong>{formatReportedTime(successReport.reportedAt)} น.</strong></span></span>
+                <span><span><small>วันที่</small><strong>{formatReportedDate(successReport.reportedAt)}</strong></span></span>
+                <span><span><small>เวลา</small><strong>{formatReportedTime(successReport.reportedAt)} น.</strong></span></span>
               </div>
             </div>
 
-            <div className="success-note">
-              <span>✓</span>
+            <div className="success-emergency-note">
+              <WarningIcon />
               <div>
-                <strong>ร่วมสร้างชุมชนที่ปลอดภัย</strong>
-                <p>ข้อมูลของคุณจะถูกนำไปวิเคราะห์เพื่อป้องกันและช่วยเหลือผู้อื่นจากการถูกหลอกลวง</p>
+                <strong>ถ้าคุณเสียเงินไปแล้ว</strong>
+                <p><a href="https://thaipoliceonline.go.th/" target="_blank" rel="noreferrer">แจ้งความออนไลน์</a><span>หรือโทรสายด่วน <a href="tel:1441">1441</a></span></p>
               </div>
             </div>
 
