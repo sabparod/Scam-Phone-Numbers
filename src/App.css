@@ -685,11 +685,13 @@
 .check-popup-modal {
   position: relative;
   width: min(100%, 360px);
+  container-type: inline-size;
   padding: 30px 22px 24px;
-  border: 1px solid #e1e8f2;
+  border: 1px solid #f0d5a5;
+  border-top: 4px solid #e9a526;
   border-radius: 22px;
-  background: #ffffff;
-  box-shadow: 0 24px 60px rgba(10, 25, 47, 0.24);
+  background: linear-gradient(180deg, #fffdf8 0%, #ffffff 42%);
+  box-shadow: 0 24px 60px rgba(83, 58, 18, 0.2);
   text-align: center;
 }
 
@@ -716,6 +718,11 @@
   color: #0eaa58;
 }
 
+.check-popup-icon.no-history {
+  background: #fff4d6;
+  color: #b77900;
+}
+
 .check-popup-icon.risk-medium {
   background: #fff4d6;
   color: #b77900;
@@ -724,6 +731,11 @@
 .check-popup-icon.risk-high {
   background: #ffebe6;
   color: #d94801;
+}
+
+.check-popup-icon.reported {
+  background: #fff4d6;
+  color: #b77900;
 }
 
 .check-popup-modal h2 {
@@ -745,6 +757,26 @@
   color: #465a78;
   font-size: 0.98rem;
   line-height: 1.5;
+}
+
+.check-popup-disclaimer {
+  margin: 12px 0 0;
+  color: #69748d;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.check-popup-safety-note {
+  margin: 14px 0 0;
+  padding: 10px 6px;
+  border: 1px solid #f0d5a5;
+  border-radius: 12px;
+  background: #fff8e7;
+  color: #7c5400;
+  font-size: clamp(0.45rem, 2.5cqi, 0.65rem);
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .check-popup-question {
@@ -780,6 +812,121 @@
 
 .check-popup-cancel-button:hover {
   background: #f5f8fc;
+}
+
+.check-popup-link {
+  display: block;
+  margin: 14px auto 0;
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: #246bd0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.check-popup-link:hover {
+  color: #1e3a8a;
+}
+
+.dispute-modal {
+  width: min(100%, 430px);
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 26px 20px 22px;
+  text-align: left;
+}
+
+.dispute-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dispute-form h2,
+.dispute-success h2 {
+  margin: 0 0 4px;
+  color: #152443;
+  font-size: 1.2rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.dispute-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #24427b;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.dispute-form input,
+.dispute-form textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #c8d5e8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #152443;
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+.dispute-form input[readonly] {
+  background: #f3f6fb;
+  color: #536783;
+}
+
+.dispute-form textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.dispute-form input:focus,
+.dispute-form textarea:focus {
+  outline: 3px solid rgba(37, 99, 235, 0.16);
+  border-color: #3984e8;
+}
+
+.dispute-form label small {
+  color: #69748d;
+  font-size: 0.7rem;
+}
+
+.dispute-error {
+  margin: 0;
+  color: #c2410c;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.dispute-submit-button {
+  width: 100%;
+  height: 48px;
+}
+
+.dispute-submit-button:disabled,
+.check-popup-cancel-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.dispute-success {
+  text-align: center;
+}
+
+.dispute-success p {
+  margin: 10px 0 16px;
+  color: #536783;
+  font-size: 0.86rem;
+  line-height: 1.55;
 }
 
 .check-popup-badge {

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { supabase } from './lib/supabase'
 
+const REPORT_THRESHOLD = 3
+
 const categoryNames = {
   scam: 'แอบอ้างหน่วยงานรัฐ',
   bank: 'แอบอ้างธนาคาร',
@@ -56,6 +58,10 @@ const getReporterMultiplier = (reporterCount) => {
   return 0.5
 }
 
+const getReporterCount = (phoneReports) => new Set(
+  phoneReports.map((report) => report.reporterId || 'legacy-reporter'),
+).size
+
 const getRiskScore = (phoneReports) => {
   const reportCount = phoneReports.length
   const maxSeverity = Math.max(...phoneReports.map(getReportSeverity), 0)
@@ -65,7 +71,7 @@ const getRiskScore = (phoneReports) => {
   }, 0)
   const evidenceTotal = phoneReports.filter((report) => report.evidence).length
   const linkTotal = phoneReports.filter((report) => report.hasLink === 'yes' || report.link).length
-  const reporterCount = new Set(phoneReports.map((report) => report.reporterId || 'legacy-reporter')).size
+  const reporterCount = getReporterCount(phoneReports)
   const rawScore = reportCount * 12 + maxSeverity * 18 + damageTotal * 5 + evidenceTotal * 8 + linkTotal * 10
   return Math.min(100, rawScore * getReporterMultiplier(reporterCount))
 }
@@ -101,10 +107,11 @@ const getScoreColor = (score) => {
 }
 
 const getCheckPopupIcon = (popup) => {
+  if (popup.noHistory) return { className: 'check-popup-icon no-history', icon: '¡' }
   if (!popup.found) return { className: 'check-popup-icon search', icon: '?' }
   if (popup.riskLevel === 'สูง') return { className: 'check-popup-icon risk-high', icon: '!' }
   if (popup.riskLevel === 'กลาง') return { className: 'check-popup-icon risk-medium', icon: '!' }
-  return { className: 'check-popup-icon risk-low', icon: '✓' }
+  return { className: 'check-popup-icon reported', icon: '!' }
 }
 
 const SearchIcon = () => (
@@ -224,6 +231,11 @@ function App() {
   const [checkPhone, setCheckPhone] = useState('')
   const [searchResult, setSearchResult] = useState(null)
   const [checkPopup, setCheckPopup] = useState(null)
+  const [showDisputeForm, setShowDisputeForm] = useState(false)
+  const [disputeData, setDisputeData] = useState({ phone_number: '', reason: '', contact: '' })
+  const [disputeError, setDisputeError] = useState('')
+  const [isDisputeSubmitting, setIsDisputeSubmitting] = useState(false)
+  const [disputeSent, setDisputeSent] = useState(false)
   const [successReport, setSuccessReport] = useState(null)
   const [reportError, setReportError] = useState('')
   const [form, setForm] = useState({
@@ -258,12 +270,14 @@ function App() {
     return Object.values(map)
       .map((entry) => {
         const highestCategory = Object.entries(entry.categoryCounts).sort((a, b) => b[1] - a[1])[0]
-        const riskScore = getRiskScore(entry.reports)
+        const reporterCount = getReporterCount(entry.reports)
+        const riskScore = reporterCount >= REPORT_THRESHOLD ? getRiskScore(entry.reports) : null
         return {
           phone: entry.phone,
           count: entry.reports.length,
+          reporterCount,
           riskScore,
-          riskLevel: getRiskLevel(riskScore),
+          riskLevel: riskScore === null ? null : getRiskLevel(riskScore),
           highestCategory: highestCategory ? getCategoryName(highestCategory[0]) : '',
         }
       })
@@ -282,11 +296,15 @@ function App() {
     })
 
     return Object.values(map)
-      .map((entry) => ({
-        ...entry,
-        count: entry.reports.length,
-        riskLevel: getRiskLevel(getRiskScore(entry.reports)),
-      }))
+      .map((entry) => {
+        const reporterCount = getReporterCount(entry.reports)
+        const riskScore = reporterCount >= REPORT_THRESHOLD ? getRiskScore(entry.reports) : null
+        return {
+          ...entry,
+          count: entry.reports.length,
+          riskLevel: riskScore === null ? null : getRiskLevel(riskScore),
+        }
+      })
       .sort((a, b) => getRiskScore(b.reports) - getRiskScore(a.reports))
   }, [currentReporterId, reports])
 
@@ -334,11 +352,15 @@ function App() {
       return
     }
 
+    const hasEnoughReports = match.reporterCount >= REPORT_THRESHOLD
     setSearchResult({
       phone: match.phone,
-      riskScore: match.riskScore,
-      riskLevel: match.riskLevel,
-      detail: getReportDetail(match),
+      reporterCount: match.reporterCount,
+      riskScore: hasEnoughReports ? match.riskScore : null,
+      riskLevel: hasEnoughReports ? match.riskLevel : null,
+      detail: hasEnoughReports
+        ? getReportDetail(match)
+        : 'ยังมีรายงานไม่มากพอที่จะประเมินระดับความเสี่ยง',
     })
   }, [checkPhone, historyByPhone])
 
@@ -358,17 +380,27 @@ function App() {
     }
 
     const match = historyByPhone.find((entry) => entry.phone === normalized)
-    setCheckPopup(match ? {
-      phone: normalized,
-      title: 'เบอร์นี้เคยถูกรายงาน',
-      detail: getReportDetail(match),
-      found: true,
-      riskLevel: match.riskLevel,
-    } : {
+    if (match) {
+      const hasEnoughReports = match.reporterCount >= REPORT_THRESHOLD
+      setCheckPopup({
+        phone: normalized,
+        title: hasEnoughReports ? 'เบอร์นี้เคยถูกรายงาน' : 'มีผู้รายงาน',
+        detail: hasEnoughReports
+          ? getReportDetail(match)
+          : 'ยังมีรายงานไม่มากพอที่จะประเมินระดับความเสี่ยง',
+        found: true,
+        reporterCount: match.reporterCount,
+        riskLevel: hasEnoughReports ? match.riskLevel : null,
+      })
+      return
+    }
+
+    setCheckPopup({
       phone: normalized,
       title: 'ยังไม่มีประวัติรายงานเบอร์นี้ในระบบ',
       detail: '',
       found: false,
+      noHistory: true,
     })
   }
 
@@ -376,6 +408,53 @@ function App() {
     setForm((previous) => ({ ...previous, phone: checkPopup.phone }))
     setCheckPopup(null)
     setActiveTab('report')
+  }
+
+  const handleOpenDisputeForm = () => {
+    setDisputeData({ phone_number: checkPopup.phone, reason: '', contact: '' })
+    setDisputeError('')
+    setDisputeSent(false)
+    setCheckPopup(null)
+    setShowDisputeForm(true)
+  }
+
+  const handleDisputeSubmit = async (event) => {
+    event.preventDefault()
+    if (isDisputeSubmitting) return
+
+    const reason = disputeData.reason.trim()
+    const contact = disputeData.contact.trim()
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const mobileContact = contact.replace(/[\s()-]/g, '')
+
+    if (reason.length < 10 || reason.length > 500) {
+      setDisputeError('กรุณาระบุเหตุผลตั้งแต่ 10 ถึง 500 ตัวอักษร')
+      return
+    }
+    if (!emailPattern.test(contact) && !/^0[689]\d{8}$/.test(mobileContact)) {
+      setDisputeError('กรุณากรอกอีเมลหรือเบอร์มือถือไทย 10 หลักให้ถูกต้อง')
+      return
+    }
+    if (!supabase) {
+      setDisputeError('ระบบยังไม่ได้เชื่อมต่อฐานข้อมูล จึงส่งคำขอไม่ได้')
+      return
+    }
+
+    setDisputeError('')
+    setIsDisputeSubmitting(true)
+    try {
+      const { error } = await supabase.from('dispute_requests').insert({
+        phone_number: disputeData.phone_number,
+        reason,
+        contact,
+      })
+      if (error) throw error
+      setDisputeSent(true)
+    } catch {
+      setDisputeError('ส่งคำขอไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+    } finally {
+      setIsDisputeSubmitting(false)
+    }
   }
 
   const toggleReportOption = (field, value, extra = {}) => {
@@ -568,12 +647,9 @@ function App() {
         <div className="tab-screen history-screen">
           <div className="check-header">
             <div className="check-icon"><HistoryIcon /></div>
-            <span>ประวัติ</span>
+            <h2>เบอร์ที่คุณเคยรายงานจากอุปกรณ์นี้</h2>
           </div>
-
-          <h2>ฐานข้อมูล</h2>
-          <p>เบอร์ที่คุณเคยรายงานจากอุปกรณ์นี้</p>
-
+          
           <div className="history-list">
             {ownHistoryByPhone.map((entry, index) => (
               <div key={entry.phone} className="history-row">
@@ -582,7 +658,7 @@ function App() {
                   <strong>{entry.phone}</strong>
                   <small>แจ้งเมื่อ {formatReportedAt(entry.latestReportedAt)}</small>
                 </div>
-                <em>{entry.riskLevel}</em>
+                <em>{entry.riskLevel || 'ยังไม่ประเมิน'}</em>
               </div>
             ))}
           </div>
@@ -643,6 +719,7 @@ function App() {
           />
           <button type="submit">ตรวจสอบ</button>
         </form>
+        
 
       </div>
     )
@@ -714,9 +791,62 @@ function App() {
             <p className="check-popup-phone">{checkPopup.phone}</p>
             {checkPopup.detail ? <p className="check-popup-detail">{checkPopup.detail}</p> : null}
             {checkPopup.riskLevel ? <span className="check-popup-badge">ระดับความเสี่ยง {checkPopup.riskLevel}</span> : null}
+            {checkPopup.found ? <p className="check-popup-disclaimer">ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</p> : null}
+            {checkPopup.noHistory ? <p className="check-popup-safety-note">ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</p> : null}
             <p className="check-popup-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
             <button type="button" className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>รายงานเบอร์นี้</button>
             <button type="button" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ยกเลิก</button>
+            {checkPopup.found ? <button type="button" className="check-popup-link" onClick={handleOpenDisputeForm}>เป็นเจ้าของเบอร์นี้? ขอให้ตรวจสอบ</button> : null}
+          </section>
+        </div>
+      ) : null}
+
+      {showDisputeForm ? (
+        <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="dispute-title">
+          <section className="check-popup-modal dispute-modal">
+            {disputeSent ? (
+              <div className="dispute-success" role="status">
+                <h2 id="dispute-title">ส่งคำขอตรวจสอบแล้ว</h2>
+                <p>ทีมงานจะตรวจสอบข้อมูลและติดต่อกลับตามช่องทางที่ระบุ</p>
+                <button type="button" className="check-popup-cancel-button" onClick={() => setShowDisputeForm(false)}>ปิด</button>
+              </div>
+            ) : (
+              <form className="dispute-form" onSubmit={handleDisputeSubmit} noValidate>
+                <h2 id="dispute-title">ขอให้ตรวจสอบเบอร์นี้</h2>
+                <label>
+                  หมายเลขโทรศัพท์
+                  <input type="tel" value={disputeData.phone_number} readOnly />
+                </label>
+                <label>
+                  เหตุผล <span className="required-mark">*</span>
+                  <textarea
+                    value={disputeData.reason}
+                    onChange={(event) => setDisputeData({ ...disputeData, reason: event.target.value })}
+                    minLength={10}
+                    maxLength={500}
+                    required
+                    rows="4"
+                  />
+                </label>
+                <label>
+                  ช่องทางติดต่อกลับ <span className="required-mark">*</span>
+                  <input
+                    type="text"
+                    value={disputeData.contact}
+                    onChange={(event) => setDisputeData({ ...disputeData, contact: event.target.value })}
+                    autoComplete="email"
+                    required
+                    placeholder="อีเมลหรือเบอร์มือถือ 10 หลัก"
+                  />
+                  <small>อีเมลหรือเบอร์ที่ติดต่อได้ ใช้เพื่อติดต่อกลับเรื่องนี้เท่านั้น</small>
+                </label>
+                {disputeError ? <p className="dispute-error" role="alert">{disputeError}</p> : null}
+                <button type="submit" className="submit-button dispute-submit-button" disabled={isDisputeSubmitting}>
+                  {isDisputeSubmitting ? 'กำลังส่งคำขอ...' : 'ส่งคำขอตรวจสอบ'}
+                </button>
+                <button type="button" className="check-popup-cancel-button" disabled={isDisputeSubmitting} onClick={() => setShowDisputeForm(false)}>ยกเลิก</button>
+              </form>
+            )}
           </section>
         </div>
       ) : null}
