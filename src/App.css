@@ -7,7 +7,7 @@
   background: linear-gradient(180deg, #f8f8f8 0%, #eaf6ff 40%, #ffffff 100%);
   position: relative;
   isolation: isolate;
-  padding: clamp(16px, 3vw, 32px) clamp(14px, 4vw, 28px) 124px;
+  padding: clamp(16px, 3vw, 32px) clamp(14px, 4vw, 28px) calc(150px + env(safe-area-inset-bottom));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -33,7 +33,7 @@
   flex-direction: column;
   min-height: 100%;
   height: auto;
-  padding-bottom: 12px;
+  padding-bottom: 28px;
   width: 100%;
 
 }
@@ -590,15 +590,15 @@
 .bottom-nav {
   position: fixed;
   left: 50%;
-  bottom: max(10px, env(safe-area-inset-bottom));
-  width: min(640px, calc(100% - clamp(20px, 6vw, 48px)));
+  bottom: 0;
+  width: min(680px, 100%);
   transform: translateX(-50%);
   z-index: 1000;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   padding: 12px 8px 10px;
-  border-radius: 20px 20px 22px 22px;
+  border-radius: 20px 20px 0 0;
   background: linear-gradient(180deg, #ffffff, #ebf5ff);
   border: 1px solid rgba(30, 58, 138, 0.08);
   box-shadow: 0 -8px 18px rgba(30, 58, 138, 0.08);
@@ -1173,7 +1173,7 @@
 
 @media (min-width: 768px) {
   .phone-frame {
-    padding-bottom: 132px;
+    padding-bottom: calc(150px + env(safe-area-inset-bottom));
   }
 
   .report-form,

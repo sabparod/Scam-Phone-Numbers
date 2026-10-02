@@ -181,6 +181,7 @@ const mapReportToDatabase = (report) => ({
 })
 
 function App() {
+  const currentReporterId = getReporterId()
   const [reports, setReports] = useState([])
 
   useEffect(() => {
@@ -272,7 +273,7 @@ function App() {
   const ownHistoryByPhone = useMemo(() => {
     const map = {}
 
-    reports.filter((report) => report.ownerDevice).forEach((report) => {
+    reports.filter((report) => report.reporterId === currentReporterId).forEach((report) => {
       const key = report.phone
       if (!map[key]) map[key] = { phone: key, reports: [], latestReportedAt: null }
 
@@ -287,7 +288,7 @@ function App() {
         riskLevel: getRiskLevel(getRiskScore(entry.reports)),
       }))
       .sort((a, b) => getRiskScore(b.reports) - getRiskScore(a.reports))
-  }, [reports])
+  }, [currentReporterId, reports])
 
   const yesterdayInsight = useMemo(() => {
     const yesterday = new Date()
