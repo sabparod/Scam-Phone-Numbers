@@ -805,14 +805,14 @@ function App() {
 
       {checkPopup ? (
         <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="check-popup-title">
-          <section className="check-popup-modal">
-            <div className={getCheckPopupIcon(checkPopup).className}>{getCheckPopupIcon(checkPopup).icon}</div>
+          <section className={checkPopup.noHistory ? 'check-popup-modal check-popup-no-history' : checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? 'check-popup-modal check-popup-low-reports' : 'check-popup-modal'}>
+            <div className={`${getCheckPopupIcon(checkPopup).className}${checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? ' low-reports' : ''}`}>{getCheckPopupIcon(checkPopup).icon}</div>
             <h2 id="check-popup-title">{checkPopup.title}</h2>
             <p className="check-popup-phone">{checkPopup.phone}</p>
             {checkPopup.detail ? <p className="check-popup-detail">{checkPopup.detail}</p> : null}
             {checkPopup.riskLevel ? <span className="check-popup-badge">ระดับความเสี่ยง {checkPopup.riskLevel}</span> : null}
             {checkPopup.found ? <p className="check-popup-disclaimer">ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</p> : null}
-            {checkPopup.noHistory ? <p className="check-popup-safety-note">ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</p> : null}
+            {checkPopup.noHistory ? <p className="check-popup-safety-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0-8h.01" /></svg><span>ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</span></p> : null}
             <p className="check-popup-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
             <button type="button" className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>รายงานเบอร์นี้</button>
             <button type="button" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ยกเลิก</button>

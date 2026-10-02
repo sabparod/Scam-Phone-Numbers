@@ -695,6 +695,18 @@
   text-align: center;
 }
 
+.check-popup-modal.check-popup-low-reports {
+  border-color: transparent;
+  border-top-color: transparent;
+  background: #ffffff;
+}
+
+.check-popup-modal.check-popup-no-history {
+  border-color: transparent;
+  border-top-color: transparent;
+  background: #ffffff;
+}
+
 .check-popup-icon {
   width: 64px;
   height: 64px;
@@ -719,8 +731,8 @@
 }
 
 .check-popup-icon.no-history {
-  background: #fff4d6;
-  color: #b77900;
+  background: #F1F5F9;
+  color: #334155;
 }
 
 .check-popup-icon.risk-medium {
@@ -738,6 +750,11 @@
   color: #b77900;
 }
 
+.check-popup-icon.low-reports {
+  background: #F1F5F9;
+  color: #334155;
+}
+
 .check-popup-modal h2 {
   margin: 0 0 8px;
   color: #152443;
@@ -747,7 +764,7 @@
 
 .check-popup-phone {
   margin: 0 0 10px;
-  color: #246bd0;
+  color: #1F3A8A;
   font-size: 1.15rem;
   font-weight: 800;
 }
@@ -767,16 +784,26 @@
 }
 
 .check-popup-safety-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 14px 0 0;
-  padding: 10px 6px;
-  border: 1px solid #f0d5a5;
+  padding: 10px 12px;
+  border: 1px solid #E2E8F0;
   border-radius: 12px;
-  background: #fff8e7;
-  color: #7c5400;
-  font-size: clamp(0.45rem, 2.5cqi, 0.65rem);
+  background: #F1F5F9;
+  color: #334155;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.5;
-  white-space: nowrap;
+  text-align: left;
+}
+
+.check-popup-safety-note svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 1px;
 }
 
 .check-popup-question {
@@ -788,12 +815,13 @@
 
 .success-home-button.check-popup-report-button {
   margin-top: 12px;
-  background: #e85d04;
-  box-shadow: 0 8px 16px rgba(232, 93, 4, 0.24);
+  background: linear-gradient(90deg, #1F3A8A, #1D6FA5);
+  color: #ffffff;
+  box-shadow: 0 8px 16px rgba(31, 58, 138, 0.22);
 }
 
 .success-home-button.check-popup-report-button:hover {
-  background: #c2410c;
+  background: linear-gradient(90deg, #1F3A8A, #1D6FA5);
 }
 
 .check-popup-cancel-button {
@@ -1131,14 +1159,14 @@
   margin: 8px auto 14px;
   display: grid;
   place-items: center;
-  border: 6px solid #18ae63;
+  border: 6px solid #1F3A8A;
   border-radius: 50%;
-  background: #f0fff6;
-  box-shadow: 0 0 0 8px #f2fbf6;
+  background: #f1f5ff;
+  box-shadow: 0 0 0 8px #f2f5fb;
 }
 
 .success-mark span {
-  color: #18ae63;
+  color: #1F3A8A;
   font-size: 2.4rem;
   font-weight: 500;
   line-height: 1;
