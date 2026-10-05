@@ -100,6 +100,14 @@ const formatReportedTime = (value) => new Intl.DateTimeFormat('th-TH', {
   minute: '2-digit',
 }).format(new Date(value))
 
+const getLocalDateKey = (value) => {
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 const getRiskLevel = (score) => {
   if (score >= 75) return 'สูง'
   if (score >= 40) return 'กลาง'
@@ -209,21 +217,29 @@ const mapReportToDatabase = (report) => ({
 function App() {
   const currentReporterId = getReporterId()
   const [reports, setReports] = useState([])
+  const [reportsLoading, setReportsLoading] = useState(true)
 
   useEffect(() => {
     if (!supabase) {
       setReports(readLocalReports())
+      setReportsLoading(false)
       return undefined
     }
 
     let isMounted = true
     const loadReports = async () => {
-      const { data, error } = await supabase
-        .from('reports')
-        .select('*')
-        .order('reported_at', { ascending: false })
+      try {
+        const { data, error } = await supabase
+          .from('reports')
+          .select('*')
+          .order('reported_at', { ascending: false })
 
-      if (isMounted) setReports(error ? readLocalReports() : data.map(mapReportFromDatabase))
+        if (isMounted) setReports(error ? readLocalReports() : data.map(mapReportFromDatabase))
+      } catch {
+        if (isMounted) setReports(readLocalReports())
+      } finally {
+        if (isMounted) setReportsLoading(false)
+      }
     }
 
     loadReports()
@@ -248,6 +264,8 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('check')
   const [checkPhone, setCheckPhone] = useState('')
+  const [isChecking, setIsChecking] = useState(false)
+  const [checkError, setCheckError] = useState('')
   const [searchResult, setSearchResult] = useState(null)
   const [checkPopup, setCheckPopup] = useState(null)
   const [showDisputeForm, setShowDisputeForm] = useState(false)
@@ -327,25 +345,23 @@ function App() {
       .sort((a, b) => getRiskScore(b.reports) - getRiskScore(a.reports))
   }, [currentReporterId, reports])
 
-  const yesterdayInsight = useMemo(() => {
+  const yesterdaySummary = useMemo(() => {
     const yesterday = new Date()
     yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayDate = yesterday.toISOString().slice(0, 10)
-    const yesterdayReports = reports.filter((report) => report.date === yesterdayDate)
-    const categoryCounts = yesterdayReports.reduce((counts, report) => {
-      counts[report.category] = (counts[report.category] || 0) + 1
+    const dateKey = getLocalDateKey(yesterday)
+    const yesterdayReports = reports.filter((report) => getLocalDateKey(report.reportedAt || report.date) === dateKey)
+    return { date: yesterday, reports: yesterdayReports }
+  }, [reports])
+
+  const communitySummary = useMemo(() => {
+    const categoryCounts = reports.reduce((counts, report) => {
+      const category = getCategoryName(report.category) || 'ไม่ระบุประเภท'
+      counts[category] = (counts[category] || 0) + 1
       return counts
     }, {})
-    const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]
-    if (!topCategory || !yesterdayReports.length) return null
-    const category = getCategoryName(topCategory[0]) || 'ไม่ระบุประเภท'
+    const categories = Object.entries(categoryCounts).sort((first, second) => second[1] - first[1])
 
-    return {
-      category,
-      reportCount: yesterdayReports.length,
-      share: Math.round((topCategory[1] / yesterdayReports.length) * 100),
-      summary: `พบการรายงานประเภท${category}สูงที่สุดจากข้อมูลที่ระบบวิเคราะห์ได้เมื่อวานนี้`,
-    }
+    return { categories }
   }, [reports])
 
   useEffect(() => {
@@ -385,42 +401,54 @@ function App() {
 
   const handleCheckSubmit = (event) => {
     event.preventDefault()
-    const normalized = normalizePhone(checkPhone)
-    setCheckPhone(normalized)
+    if (isChecking) return
+    setIsChecking(true)
+    setCheckError('')
 
-    if (!isValidPhoneLength(normalized)) {
-      setCheckPopup({
-        phone: normalized,
-        title: 'รูปแบบเบอร์ไม่ถูกต้อง',
-        detail: 'กรุณากรอกเบอร์โทรศัพท์ 3, 4, 9 หรือ 10 หลัก',
-        found: false,
-      })
-      return
-    }
+    window.setTimeout(() => {
+      try {
+        const normalized = normalizePhone(checkPhone)
+        setCheckPhone(normalized)
 
-    const match = historyByPhone.find((entry) => entry.phone === normalized)
-    if (match) {
-      const hasEnoughReports = match.reporterCount >= REPORT_THRESHOLD
-      setCheckPopup({
-        phone: normalized,
-        title: hasEnoughReports ? 'เบอร์นี้เคยถูกรายงาน' : 'มีผู้รายงาน',
-        detail: hasEnoughReports
-          ? getReportDetail(match)
-          : 'ยังมีรายงานไม่มากพอที่จะประเมินระดับความเสี่ยง',
-        found: true,
-        reporterCount: match.reporterCount,
-        riskLevel: hasEnoughReports ? match.riskLevel : null,
-      })
-      return
-    }
+        if (!isValidPhoneLength(normalized)) {
+          setCheckPopup({
+            phone: normalized,
+            title: 'รูปแบบเบอร์ไม่ถูกต้อง',
+            detail: 'กรุณากรอกเบอร์โทรศัพท์ 3, 4, 9 หรือ 10 หลัก',
+            found: false,
+          })
+          return
+        }
 
-    setCheckPopup({
-      phone: normalized,
-      title: 'ยังไม่มีประวัติรายงานเบอร์นี้ในระบบ',
-      detail: '',
-      found: false,
-      noHistory: true,
-    })
+        const match = historyByPhone.find((entry) => entry.phone === normalized)
+        if (match) {
+          const hasEnoughReports = match.reporterCount >= REPORT_THRESHOLD
+          setCheckPopup({
+            phone: normalized,
+            title: hasEnoughReports ? 'เบอร์นี้เคยถูกรายงาน' : 'มีผู้รายงาน',
+            detail: hasEnoughReports
+              ? getReportDetail(match)
+              : 'ยังมีรายงานไม่มากพอที่จะประเมินระดับความเสี่ยง',
+            found: true,
+            reporterCount: match.reporterCount,
+            riskLevel: hasEnoughReports ? match.riskLevel : null,
+          })
+          return
+        }
+
+        setCheckPopup({
+          phone: normalized,
+          title: 'ยังไม่มีประวัติรายงานเบอร์นี้ในระบบ',
+          detail: '',
+          found: false,
+          noHistory: true,
+        })
+      } catch {
+        setCheckError('ไม่สามารถตรวจสอบข้อมูลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง')
+      } finally {
+        setIsChecking(false)
+      }
+    }, 180)
   }
 
   const handleReportFromCheck = () => {
@@ -586,7 +614,7 @@ function App() {
                     ['scam', 'แอบอ้างหน่วยงานรัฐ'],
                     ['bank', 'แอบอ้างธนาคาร'],
                     ['spam', 'เอกชน/ขนส่ง'],
-                    ['ai_voice', 'ปลอมเสียงคนรู้จัก'],
+                    ['ai_voice', 'ปลอมเสียงคนรู้จัก'],  
                     ['impersonation', 'หลอกลงทุน'],
                     ['loan', 'ปล่อยกู้'],
                     ['prize', 'รับรางวัล'],
@@ -688,59 +716,112 @@ function App() {
 
     return (
       <div className="tab-screen check-screen">
-        {yesterdayInsight ? <section className="insight-popup" aria-label="รายงานการหลอกลวงสูงสุดเมื่อวานนี้">
-          <h3>📈 รายงานการหลอกลวงสูงสุดเมื่อวานนี้</h3>
+        <header className="site-header">
+          <span className="brand-mark"><PhoneIcon /></span>
+          <div>
+            <h1>ตรวจสอบหมายเลขโทรศัพท์</h1>
+            <p>เช็กก่อนโทร ปลอดภัยกว่า</p>
+          </div>
+        </header>
 
-          <div className="insight-main">
-            <div className="insight-gauge" style={{ background: `conic-gradient(#f04438 ${yesterdayInsight.share}%, #ff8b3d ${yesterdayInsight.share}% 100%)` }}>
-              <div className="insight-gauge-inner">
-                <strong>{yesterdayInsight.share}%</strong>
-                <span>จากรายงานทั้งหมด</span>
-              </div>
-            </div>
-
-            <div className="insight-details">
-              <div className="insight-row">
-                <span className="insight-icon category-icon">👮</span>
-                <div>
-                  <small>ประเภท</small>
-                  <strong>{yesterdayInsight.category}</strong>
-                </div>
-              </div>
-              <div className="insight-divider" />
-              <div className="insight-row">
-                <span className="insight-icon report-icon">📄</span>
-                <div>
-                  <small>จำนวน</small>
-                  <strong>{yesterdayInsight.reportCount} รายงาน</strong>
-                </div>
-              </div>
+        <section className="search-panel" aria-labelledby="search-title">
+          <div className="search-panel-title">
+            <span className="search-panel-icon"><SearchIcon /></span>
+            <div>
+              <h2 id="search-title">ตรวจสอบหมายเลขโทรศัพท์</h2>
+              <p>ค้นหาประวัติการรายงานและตรวจสอบว่าเบอร์นี้มีความเสี่ยงหรือไม่</p>
             </div>
           </div>
+          <form onSubmit={handleCheckSubmit} className="check-form">
+            <label className="visually-hidden" htmlFor="phone-check">กรอกหมายเลขโทรศัพท์</label>
+            <input
+              id="phone-check"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={checkPhone}
+              onChange={(event) => setCheckPhone(normalizePhone(event.target.value))}
+              placeholder="เช่น 081-234-5678"
+              aria-describedby={checkError ? 'check-error' : undefined}
+            />
+            <button type="submit" disabled={isChecking || reportsLoading}>
+              {isChecking || reportsLoading ? <><span className="loading-spinner" aria-hidden="true" />กำลังตรวจสอบ...</> : <><SearchIcon />ตรวจสอบ</>}
+            </button>
+          </form>
+          {checkError ? <p className="check-error" id="check-error" role="alert">{checkError}</p> : null}
+        </section>
 
-          <div className="insight-summary">
-            <span>🚨</span>
-            <p><strong>สรุป:</strong> {yesterdayInsight.summary}</p>
-            <span className="summary-arrow">›</span>
+        <section className="community-section" aria-labelledby="community-title">
+          <div className="community-heading">
+            <span className="community-heading-icon"><ReportIcon /></span>
+            <div>
+              <h2 id="community-title">รายงานจากชุมชน</h2>
+              <p>ข้อมูลการรายงานจากผู้ใช้งาน</p>
+            </div>
+            {reports.length > 0 ? <span className="community-total">{reports.length} รายงาน</span> : null}
           </div>
-        </section> : <div className="empty-insight">ยังไม่มีข้อมูลเพียงพอสำหรับการวิเคราะห์รายงานสูงสุด</div>}
 
-        <div className="check-header">
-          <div className="check-icon"><SearchIcon /></div>
-          <h2>ตรวจสอบหมายเลขโทรศัพท์</h2>
-        </div>
+          <div className="daily-summary" aria-live="polite">
+            <div>
+              <strong>รายงานเมื่อวาน</strong>
+              <time dateTime={getLocalDateKey(yesterdaySummary.date)}>{formatReportedDate(yesterdaySummary.date)}</time>
+            </div>
+            {yesterdaySummary.reports.length > 0
+              ? <p>มีรายงานใหม่ {yesterdaySummary.reports.length} รายการ</p>
+              : <p>เมื่อวานยังไม่มีรายงาน</p>}
+          </div>
 
-        <form onSubmit={handleCheckSubmit} className="check-form">
-          <input
-            type="tel"
-            value={checkPhone}
-            onChange={(event) => setCheckPhone(normalizePhone(event.target.value))}
-            placeholder="กรอกหมายเลขโทรศัพท์"
-          />
-          <button type="submit">ตรวจสอบ</button>
-        </form>
-        
+          {reportsLoading ? (
+            <div className="community-loading" role="status"><span className="loading-spinner" />กำลังโหลดรายงาน</div>
+          ) : reports.length === 0 ? (
+            <div className="community-empty">
+              <span className="empty-report-icon"><ReportIcon /></span>
+              <h3>วันนี้ยังไม่มีรายงานใหม่</h3>
+              <p>เมื่อมีผู้ใช้งานรายงานหมายเลข ข้อมูลจะแสดงที่นี่</p>
+              <button type="button" className="secondary-action" onClick={() => setActiveTab('report')}>+ รายงานหมายเลข</button>
+            </div>
+          ) : reports.length <= 5 ? (
+            <div className="community-data">
+              <h3>รายงานล่าสุด</h3>
+              <ul className="category-list">
+                {communitySummary.categories.map(([category, count]) => (
+                  <li key={category}>
+                    <span className="category-dot" aria-hidden="true" />
+                    <span>{category}</span>
+                    <strong>{count} รายงาน</strong>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="community-data">
+              <h3>ประเภทการรายงานที่พบบ่อย</h3>
+              <ul className="category-bars">
+                {[
+                  ...communitySummary.categories.slice(0, 5),
+                  ...(communitySummary.categories.length > 5
+                    ? [['ประเภทอื่น ๆ', communitySummary.categories.slice(5).reduce((total, [, count]) => total + count, 0)]]
+                    : []),
+                ].map(([category, count]) => (
+                  <li key={category}>
+                    <div className="category-bar-label"><span>{category}</span><strong>{count} รายงาน</strong></div>
+                    <div className="category-track" role="img" aria-label={`${category} ${Math.round((count / reports.length) * 100)} เปอร์เซ็นต์`}>
+                      <span style={{ width: `${(count / reports.length) * 100}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
 
+        <aside className="report-invitation">
+          <div>
+            <strong>ช่วยกันสร้างฐานข้อมูล</strong>
+            <p>พบหมายเลขที่น่าสงสัย? ช่วยรายงานเพื่อให้ผู้ใช้งานคนอื่นระวังได้มากขึ้น</p>
+          </div>
+          <button type="button" onClick={() => setActiveTab('report')}>รายงานหมายเลข <span aria-hidden="true">→</span></button>
+        </aside>
       </div>
     )
   }
@@ -749,16 +830,16 @@ function App() {
     <div className="phone-frame">
       {renderTabContent()}
 
-      <nav className="bottom-nav" aria-label="main navigation">
-        <button type="button" className={activeTab === 'check' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('check')}>
+      <nav className="bottom-nav" aria-label="เมนูหลัก">
+        <button type="button" aria-label="ตรวจสอบ" aria-current={activeTab === 'check' ? 'page' : undefined} className={activeTab === 'check' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('check')}>
           <span className="nav-icon"><SearchIcon /></span>
-          <span>ตรวจสอบหมายเลขโทรศัพท์</span>
+          <span>ตรวจสอบ</span>
         </button>
-        <button type="button" className={activeTab === 'report' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('report')}>
+        <button type="button" aria-label="รายงาน" aria-current={activeTab === 'report' ? 'page' : undefined} className={activeTab === 'report' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('report')}>
           <span className="nav-icon"><ReportIcon /></span>
-          <span>รายงานหมายเลขโทรศัพท์</span>
+          <span>รายงาน</span>
         </button>
-        <button type="button" className={activeTab === 'history' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('history')}>
+        <button type="button" aria-label="ประวัติ" aria-current={activeTab === 'history' ? 'page' : undefined} className={activeTab === 'history' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('history')}>
           <span className="nav-icon"><HistoryIcon /></span>
           <span>ประวัติ</span>
         </button>

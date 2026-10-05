@@ -4,8 +4,8 @@
   font-family: 'Noto Sans Thai', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #000000;
-  background: #5cfa00;
+  color: #142946;
+  background: #f3f7fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -18,7 +18,7 @@
 }
 
 html {
-  background: #ffffff;
+  background: #f3f7fb;
   height: 100%;
   overflow: hidden;
 }
@@ -29,7 +29,7 @@ body {
   min-height: 100vh;
   height: 100%;
   overflow: hidden;
-  background: #ffffff;
+  background: #f3f7fb;
 }
 
 button,
