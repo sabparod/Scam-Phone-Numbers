@@ -3,6 +3,22 @@ import './App.css'
 import { supabase } from './lib/supabase'
 
 const REPORT_THRESHOLD = 3
+const officialReports = [
+  {
+    phone: '0633800897',
+    scamType: 'แอบอ้างเป็นตำรวจ',
+    status: 'reported',
+    riskLevel: 'high',
+    source: {
+      organization: 'สถานีตำรวจภูธรไทรโยค',
+      type: 'government',
+      publishedDate: '2025-03-15',
+      url: 'https://saiyok.kanchanaburi.police.go.th/%E0%B9%81%E0%B8%88%E0%B9%89%E0%B8%87%E0%B9%80%E0%B8%95%E0%B8%B7%E0%B8%AD%E0%B8%99%E0%B8%A0%E0%B8%B1%E0%B8%A2-%E0%B8%A1%E0%B8%B4%E0%B8%88%E0%B8%89%E0%B8%B2%E0%B8%8A%E0%B8%B5%E0%B8%9E%E0%B9%81%E0%B8%AD/',
+    },
+  },
+]
+
+const getOfficialReport = (phone) => officialReports.find((report) => report.phone === phone)
 
 const categoryNames = {
   scam: 'แอบอ้างหน่วยงานรัฐ',
@@ -434,7 +450,18 @@ function App() {
       return
     }
 
+    const officialMatch = getOfficialReport(normalized)
     const match = historyByPhone.find((entry) => entry.phone === normalized)
+    if (officialMatch) {
+      setSearchResult({
+        phone: normalized,
+        riskLevel: 'สูง',
+        detail: `พบข้อมูลจาก${officialMatch.source.organization}: ${officialMatch.scamType}`,
+        source: officialMatch.source,
+      })
+      return
+    }
+
     if (!match) {
       setSearchResult({
         phone: normalized,
@@ -478,7 +505,20 @@ function App() {
           return
         }
 
+        const officialMatch = getOfficialReport(normalized)
         const match = historyByPhone.find((entry) => entry.phone === normalized)
+        if (officialMatch) {
+          setCheckPopup({
+            phone: normalized,
+            title: 'พบข้อมูลจากแหล่งทางการ',
+            detail: `${officialMatch.scamType} ตามข้อมูลจาก${officialMatch.source.organization}`,
+            found: true,
+            riskLevel: 'สูง',
+            officialSource: officialMatch.source,
+          })
+          return
+        }
+
         if (match) {
           const hasEnoughReports = match.reporterCount >= REPORT_THRESHOLD
           setCheckPopup({
@@ -869,6 +909,30 @@ function App() {
           {checkError ? <p className="check-error" id="check-error" role="alert">{checkError}</p> : null}
         </section>
 
+        {officialReports.length > 0 ? (
+          <section className="official-source-section" aria-labelledby="official-source-title">
+            <div>
+              <h2 id="official-source-title">ข้อมูลจากแหล่งทางการ</h2>
+              <p>ข้อมูลนี้แสดงแยกจากรายงานของผู้ใช้งาน</p>
+            </div>
+            <ul>
+              {officialReports.map((report) => (
+                <li key={report.phone}>
+                  <div className="official-source-record">
+                    <strong>{formatPhoneNumber(report.phone)}</strong>
+                    <span>{report.scamType} · {report.source.organization}</span>
+                    <small>เผยแพร่ {formatReportedDate(report.source.publishedDate)}</small>
+                  </div>
+                  <span className="official-source-risk">ความเสี่ยงสูง</span>
+                  <a href={report.source.url} target="_blank" rel="noreferrer">
+                    เว็บไซต์ต้นทาง
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         <section className="community-section" aria-labelledby="community-title">
           <div className="community-heading">
             <span className="community-heading-icon"><ReportIcon /></span>
@@ -1022,7 +1086,14 @@ function App() {
             <p className="check-popup-phone">{checkPopup.phone}</p>
             {checkPopup.detail ? <p className="check-popup-detail">{checkPopup.detail}</p> : null}
             {checkPopup.riskLevel ? <span className="check-popup-badge">ระดับความเสี่ยง {checkPopup.riskLevel}</span> : null}
-            {checkPopup.found ? <p className="check-popup-disclaimer">ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</p> : null}
+            {checkPopup.officialSource ? (
+              <p className="check-popup-disclaimer">
+                แหล่งข้อมูล: {checkPopup.officialSource.organization} · เผยแพร่ {formatReportedDate(checkPopup.officialSource.publishedDate)} ·{' '}
+                <a href={checkPopup.officialSource.url} target="_blank" rel="noreferrer">เว็บไซต์ต้นทาง</a>
+              </p>
+            ) : checkPopup.found ? (
+              <p className="check-popup-disclaimer">ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</p>
+            ) : null}
             {checkPopup.noHistory ? <p className="check-popup-safety-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0-8h.01" /></svg><span>ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</span></p> : null}
             <p className="check-popup-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
             <button type="button" className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>รายงานเบอร์นี้</button>
