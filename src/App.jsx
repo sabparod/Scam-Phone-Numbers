@@ -91,6 +91,11 @@ const formatReportedAt = (value) => new Intl.DateTimeFormat('th-TH', {
   timeStyle: 'short',
 }).format(new Date(value))
 
+const getReportTimestamp = (value) => {
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
 const formatUpdatedAt = (value) => new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -344,13 +349,20 @@ function App() {
 
   const ownHistoryByPhone = useMemo(() => {
     const map = {}
+    let sourceOrder = 0
 
     reports.filter((report) => report.reporterId === currentReporterId).forEach((report) => {
       const key = report.phone
-      if (!map[key]) map[key] = { phone: key, reports: [], latestReportedAt: null }
+      if (!map[key]) {
+        map[key] = { phone: key, reports: [], latestReportedAt: null, sourceOrder: sourceOrder++ }
+      }
 
-      map[key].reports.push(report)
-      map[key].latestReportedAt = report.reportedAt || report.date
+      const entry = map[key]
+      const reportedAt = report.reportedAt || report.date
+      entry.reports.push(report)
+      if (!entry.latestReportedAt || getReportTimestamp(reportedAt) > getReportTimestamp(entry.latestReportedAt)) {
+        entry.latestReportedAt = reportedAt
+      }
     })
 
     return Object.values(map)
@@ -363,7 +375,11 @@ function App() {
           riskLevel: systemHistory?.riskLevel ?? null,
         }
       })
-      .sort((a, b) => getRiskScore(b.reports) - getRiskScore(a.reports))
+      .sort((first, second) => (
+        getReportTimestamp(second.latestReportedAt) - getReportTimestamp(first.latestReportedAt)
+        || first.sourceOrder - second.sourceOrder
+      ))
+      .map(({ sourceOrder: _sourceOrder, ...entry }) => entry)
   }, [currentReporterId, historyByPhone, reports])
 
   const yesterdaySummary = useMemo(() => {
