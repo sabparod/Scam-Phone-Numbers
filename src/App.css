@@ -1569,6 +1569,34 @@
   font-size: 0.76rem;
 }
 
+.community-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.community-metrics > div {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid #e3edf8;
+  border-radius: 999px;
+  background: #f7faff;
+}
+
+.community-metrics strong {
+  color: #285d9d;
+  font-size: 0.74rem;
+}
+
+.community-metrics span {
+  color: #687e97;
+  font-size: 0.67rem;
+}
+
 .community-total {
   flex: 0 0 auto;
   margin-left: auto;

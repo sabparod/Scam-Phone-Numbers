@@ -62,6 +62,12 @@ const getReporterCount = (phoneReports) => new Set(
   phoneReports.map((report) => report.reporterId || 'legacy-reporter'),
 ).size
 
+const getUniqueReporterCount = (reportList) => new Set(
+  reportList
+    .map((report) => report.reporterId ?? report.reporter_id)
+    .filter(Boolean),
+).size
+
 const getRiskScore = (phoneReports) => {
   const reportCount = phoneReports.length
   const maxSeverity = Math.max(...phoneReports.map(getReportSeverity), 0)
@@ -198,8 +204,22 @@ const readLocalReports = () => {
   }
 }
 
+const hasDuplicateReport = (reportList, phone, reporterId) => reportList.some((report) => (
+  normalizePhone(report.phone || '') === phone
+  && (report.reporterId ?? report.reporter_id) === reporterId
+))
+
+const isPhoneReporterUniqueViolation = (error) => error?.code === '23505' && (
+  error.constraint === 'reports_phone_reporter_id_unique_idx'
+  || error.message?.includes('reports_phone_reporter_id_unique_idx')
+  || error.details?.includes('(phone, reporter_id)')
+)
+
 const saveLocalReport = (report) => {
-  const reports = [report, ...readLocalReports()]
+  const reports = readLocalReports()
+  if (hasDuplicateReport(reports, report.phone, report.reporterId)) return null
+
+  reports.unshift(report)
   localStorage.setItem(reportsStorageKey, JSON.stringify(reports))
   return report
 }
@@ -296,6 +316,7 @@ function App() {
   const [disputeSent, setDisputeSent] = useState(false)
   const [successReport, setSuccessReport] = useState(null)
   const [reportError, setReportError] = useState('')
+  const [isReportSubmitting, setIsReportSubmitting] = useState(false)
   const [form, setForm] = useState({
     phone: '',
     category: '',
@@ -551,6 +572,7 @@ function App() {
 
   const handleReportSubmit = async (event) => {
     event.preventDefault()
+    if (isReportSubmitting) return
 
     const phone = normalizePhone(form.phone)
     const category = form.category === 'other' ? form.categoryOther.trim() : form.category
@@ -562,6 +584,13 @@ function App() {
     }
     if (form.evidence === 'yes' && !form.evidenceFile) {
       setReportError('กรุณาแนบภาพหรือไฟล์หลักฐานก่อนส่งรายงาน')
+      return
+    }
+    if (
+      hasDuplicateReport(reports, phone, currentReporterId)
+      || hasDuplicateReport(readLocalReports(), phone, currentReporterId)
+    ) {
+      setReportError('คุณได้รายงานหมายเลขนี้จากอุปกรณ์นี้แล้ว')
       return
     }
     setReportError('')
@@ -579,42 +608,62 @@ function App() {
       link: form.link,
       evidenceFile: form.evidenceFile,
       detail: form.detail || 'รายงานด้วยข้อมูลทั่วไป',
-      reporterId: getReporterId(),
+      reporterId: currentReporterId,
       status: 'pending',
       ownerDevice: true,
       reportedAt,
       date: new Date().toLocaleDateString('en-CA'),
     }
 
-    let savedReport
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('reports')
-        .insert(mapReportToDatabase(newReport))
-        .select()
-        .single()
-      savedReport = error ? saveLocalReport(newReport) : mapReportFromDatabase(data)
-    } else {
-      savedReport = saveLocalReport(newReport)
+    setIsReportSubmitting(true)
+    try {
+      let savedReport
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('reports')
+          .insert(mapReportToDatabase(newReport))
+          .select()
+          .single()
+
+        if (isPhoneReporterUniqueViolation(error)) {
+          setReportError('คุณได้รายงานหมายเลขนี้จากอุปกรณ์นี้แล้ว')
+          return
+        }
+        savedReport = error ? saveLocalReport(newReport) : mapReportFromDatabase(data)
+      } else {
+        savedReport = saveLocalReport(newReport)
+      }
+
+      if (!savedReport) {
+        setReportError('คุณได้รายงานหมายเลขนี้จากอุปกรณ์นี้แล้ว')
+        return
+      }
+
+      setReports((previous) => [savedReport, ...previous])
+      setCheckPhone(phone)
+      setSuccessReport(newReport)
+      setForm({
+        phone: '',
+        category: '',
+        categoryOther: '',
+        damage: '',
+        damageOther: '',
+        requestedInfo: '',
+        requestedInfoOther: '',
+        hasLink: '',
+        evidence: '',
+        evidenceFile: '',
+        link: '',
+        detail: '',
+      })
+      setActiveTab('check')
+    } catch (error) {
+      setReportError(isPhoneReporterUniqueViolation(error)
+        ? 'คุณได้รายงานหมายเลขนี้จากอุปกรณ์นี้แล้ว'
+        : 'บันทึกรายงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+    } finally {
+      setIsReportSubmitting(false)
     }
-    setReports((previous) => [savedReport, ...previous])
-    setCheckPhone(phone)
-    setSuccessReport(newReport)
-    setForm({
-      phone: '',
-      category: '',
-      categoryOther: '',
-      damage: '',
-      damageOther: '',
-      requestedInfo: '',
-      requestedInfoOther: '',
-      hasLink: '',
-      evidence: '',
-      evidenceFile: '',
-      link: '',
-      detail: '',
-    })
-    setActiveTab('check')
   }
 
   const renderTabContent = () => {
@@ -720,7 +769,9 @@ function App() {
               </label>
             </section>
 
-            <button type="submit" className="submit-button">บันทึกรายงาน</button>
+            <button type="submit" className="submit-button" disabled={isReportSubmitting}>
+              {isReportSubmitting ? 'กำลังบันทึกรายงาน...' : 'บันทึกรายงาน'}
+            </button>
             {reportError && !(form.evidence === 'yes' && !form.evidenceFile) ? <small className="form-error form-error-general">{reportError}</small> : null}
           </form>
         </div>
@@ -825,8 +876,20 @@ function App() {
               <h2 id="community-title">รายงานจากชุมชน</h2>
               <p>ข้อมูลการรายงานจากผู้ใช้งาน</p>
             </div>
-            {reports.length > 0 ? <span className="community-total">{reports.length} รายงาน</span> : null}
           </div>
+
+          {reports.length > 0 ? (
+            <div className="community-metrics" aria-label="สถิติรายงานจากชุมชน">
+              <div>
+                <strong>{reports.length}</strong>
+                <span>จำนวนรายงาน</span>
+              </div>
+              <div>
+                <strong>{getUniqueReporterCount(reports)}</strong>
+                <span>แหล่งรายงานที่ไม่ซ้ำ</span>
+              </div>
+            </div>
+          ) : null}
 
           <div className="daily-summary" aria-live="polite">
             <div>
