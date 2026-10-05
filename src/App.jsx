@@ -91,6 +91,11 @@ const formatReportedAt = (value) => new Intl.DateTimeFormat('th-TH', {
   timeStyle: 'short',
 }).format(new Date(value))
 
+const formatUpdatedAt = (value) => new Intl.DateTimeFormat('th-TH', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+}).format(value)
+
 const formatReportedDate = (value) => new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'medium',
 }).format(new Date(value))
@@ -112,6 +117,15 @@ const getRiskLevel = (score) => {
   if (score >= 75) return 'สูง'
   if (score >= 40) return 'กลาง'
   return 'ต่ำ'
+}
+
+const getHistoryRiskBadge = (entry) => {
+  const risk = entry.risk ?? entry.riskLevel
+  if (risk === 'อันตราย' || risk === 'danger') return { label: 'อันตราย', tone: 'danger' }
+  if (risk === 'สูง' || risk === 'high' || risk === 'ความเสี่ยงสูง') return { label: 'ความเสี่ยงสูง', tone: 'high' }
+  if (risk === 'กลาง' || risk === 'medium' || risk === 'ควรระวัง') return { label: 'ควรระวัง', tone: 'caution' }
+  if (risk === 'ต่ำ' || risk === 'low' || risk === 'ความเสี่ยงต่ำ') return { label: 'ความเสี่ยงต่ำ', tone: 'low' }
+  return { label: 'ข้อมูลน้อย', tone: 'insufficient' }
 }
 
 const getScoreColor = (score) => {
@@ -263,6 +277,8 @@ function App() {
   }, [])
 
   const [activeTab, setActiveTab] = useState('check')
+  const [expandedHistoryPhone, setExpandedHistoryPhone] = useState(null)
+  const [currentTimestamp, setCurrentTimestamp] = useState(() => new Date())
   const [checkPhone, setCheckPhone] = useState('')
   const [isChecking, setIsChecking] = useState(false)
   const [checkError, setCheckError] = useState('')
@@ -289,6 +305,11 @@ function App() {
     link: '',
     detail: '',
   })
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTimestamp(new Date()), 30000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const historyByPhone = useMemo(() => {
     const map = {}
@@ -334,16 +355,16 @@ function App() {
 
     return Object.values(map)
       .map((entry) => {
-        const reporterCount = getReporterCount(entry.reports)
-        const riskScore = reporterCount >= REPORT_THRESHOLD ? getRiskScore(entry.reports) : null
+        const systemHistory = historyByPhone.find((historyEntry) => historyEntry.phone === entry.phone)
         return {
           ...entry,
           count: entry.reports.length,
-          riskLevel: riskScore === null ? null : getRiskLevel(riskScore),
+          riskScore: systemHistory?.riskScore ?? null,
+          riskLevel: systemHistory?.riskLevel ?? null,
         }
       })
       .sort((a, b) => getRiskScore(b.reports) - getRiskScore(a.reports))
-  }, [currentReporterId, reports])
+  }, [currentReporterId, historyByPhone, reports])
 
   const yesterdaySummary = useMemo(() => {
     const yesterday = new Date()
@@ -693,22 +714,53 @@ function App() {
     if (activeTab === 'history') {
       return (
         <div className="tab-screen history-screen">
-          <div className="check-header">
-            <div className="check-icon"><HistoryIcon /></div>
-            <h2>เบอร์ที่คุณเคยรายงานจากอุปกรณ์นี้</h2>
+          <div className="history-heading">
+            <span className="history-heading-icon"><HistoryIcon /></span>
+            <div className="history-heading-copy">
+              <h2>เบอร์ที่คุณเคยรายงานจากอุปกรณ์นี้</h2>
+            </div>
+            <span className="history-count">{ownHistoryByPhone.length} รายการ</span>
           </div>
-          
+
           <div className="history-list">
-            {ownHistoryByPhone.map((entry, index) => (
-              <div key={entry.phone} className="history-row">
-                <span>#{index + 1}</span>
-                <div className="history-phone">
-                  <strong>{entry.phone}</strong>
-                  <small>แจ้งเมื่อ {formatReportedAt(entry.latestReportedAt)}</small>
-                </div>
-                <em>{entry.riskLevel || 'ยังไม่ประเมิน'}</em>
-              </div>
-            ))}
+            {ownHistoryByPhone.length === 0 ? (
+              <div className="empty-history">ยังไม่มีประวัติการรายงานจากอุปกรณ์นี้</div>
+            ) : ownHistoryByPhone.map((entry) => {
+              const riskBadge = getHistoryRiskBadge(entry)
+              const isExpanded = expandedHistoryPhone === entry.phone
+
+              return (
+                <article className="history-entry" key={entry.phone}>
+                  <button
+                    type="button"
+                    className="history-row"
+                    aria-label={`เปิดรายละเอียดหมายเลข ${entry.phone}`}
+                    aria-expanded={isExpanded}
+                    aria-controls={`history-details-${entry.phone}`}
+                    onClick={() => setExpandedHistoryPhone(isExpanded ? null : entry.phone)}
+                  >
+                    <span className="history-phone">
+                      <strong>{entry.phone}</strong>
+                      <small>แจ้งเมื่อ {formatReportedAt(entry.latestReportedAt)}</small>
+                    </span>
+                    <span className={`risk-badge history-risk-badge ${riskBadge.tone}`}>{riskBadge.label}</span>
+                  </button>
+                  {isExpanded ? (
+                    <div className="history-details" id={`history-details-${entry.phone}`}>
+                      <strong>{entry.count} รายงาน</strong>
+                      <ul>
+                        {entry.reports.map((report) => (
+                          <li key={report.id}>
+                            <span>{getCategoryName(report.category) || 'ไม่ระบุประเภท'}</span>
+                            <time>{formatReportedAt(report.reportedAt || report.date)}</time>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </article>
+              )
+            })}
           </div>
         </div>
       )
@@ -716,14 +768,13 @@ function App() {
 
     return (
       <div className="tab-screen check-screen">
-        <header className="site-header">
-          <span className="brand-mark"><PhoneIcon /></span>
-          <div>
-            <h1>ตรวจสอบหมายเลขโทรศัพท์</h1>
-            <p>เช็กก่อนโทร ปลอดภัยกว่า</p>
-          </div>
-        </header>
-
+        <div className="last-updated">
+          <span className="last-updated-indicator" aria-hidden="true" />
+          <span className="last-updated-copy">
+            <span>ข้อมูลอัปเดตล่าสุด</span>
+            <time dateTime={currentTimestamp.toISOString()}>{formatUpdatedAt(currentTimestamp)}</time>
+          </span>
+        </div>
         <section className="search-panel" aria-labelledby="search-title">
           <div className="search-panel-title">
             <span className="search-panel-icon"><SearchIcon /></span>
