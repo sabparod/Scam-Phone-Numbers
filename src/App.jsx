@@ -3,17 +3,61 @@ import './App.css'
 import { supabase } from './lib/supabase'
 
 const REPORT_THRESHOLD = 3
+const OFFICIAL_REPORTS_PREVIEW_COUNT = 2
+const officialSource = {
+  organization: 'สถานีตำรวจภูธรไทรโยค',
+  type: 'government',
+  publishedDate: '2025-03-15',
+  url: 'https://saiyok.kanchanaburi.police.go.th/%E0%B9%81%E0%B8%88%E0%B9%89%E0%B8%87%E0%B9%80%E0%B8%95%E0%B8%B7%E0%B8%AD%E0%B8%99%E0%B8%A0%E0%B8%B1%E0%B8%A2-%E0%B8%A1%E0%B8%B4%E0%B8%88%E0%B8%89%E0%B8%B2%E0%B8%8A%E0%B8%B5%E0%B8%9E%E0%B9%81%E0%B8%AD/',
+}
+const officialScamType = 'แอบอ้างเป็นตำรวจ'
 const officialReports = [
+  ...[
+    '0633800897',
+    '0634322699',
+    '0620144189',
+    '0620089883',
+  ].map((phone) => ({
+    phone,
+    scamType: officialScamType,
+    status: 'reported',
+    riskLevel: 'high',
+    source: officialSource,
+  })),
   {
-    phone: '0633800897',
-    scamType: 'แอบอ้างเป็นตำรวจ',
+    phone: '0660952909',
+    scamType: 'แอบอ้างเป็นเจ้าหน้าที่ธนาคารกรุงไทย โทรสอบถามธุรกรรมผิดปกติ',
     status: 'reported',
     riskLevel: 'high',
     source: {
-      organization: 'สถานีตำรวจภูธรไทรโยค',
+      organization: 'ธนาคารกรุงไทย / กระทรวงการคลัง',
       type: 'government',
-      publishedDate: '2025-03-15',
-      url: 'https://saiyok.kanchanaburi.police.go.th/%E0%B9%81%E0%B8%88%E0%B9%89%E0%B8%87%E0%B9%80%E0%B8%95%E0%B8%B7%E0%B8%AD%E0%B8%99%E0%B8%A0%E0%B8%B1%E0%B8%A2-%E0%B8%A1%E0%B8%B4%E0%B8%88%E0%B8%89%E0%B8%B2%E0%B8%8A%E0%B8%B5%E0%B8%9E%E0%B9%81%E0%B8%AD/',
+      publishedDate: '2025-02-15',
+      url: 'https://www.antifakenewscenter.com/%E0%B8%99%E0%B9%82%E0%B8%A2%E0%B8%9A%E0%B8%B2%E0%B8%A2%E0%B8%A3%E0%B8%B1%E0%B8%90%E0%B8%9A%E0%B8%B2%E0%B8%A5-%E0%B8%82%E0%B9%88%E0%B8%B2%E0%B8%A7%E0%B8%AA%E0%B8%B2%E0%B8%A3/%E0%B9%80%E0%B8%88%E0%B9%89%E0%B8%B2%E0%B8%AB%E0%B8%99%E0%B9%89%E0%B8%B2%E0%B8%97%E0%B8%B5%E0%B9%88-%E0%B8%98-%E0%B8%81%E0%B8%A3%E0%B8%B8%E0%B8%87%E0%B9%84%E0%B8%97%E0%B8%A2-%E0%B9%82%E0%B8%97%E0%B8%A3%E0%B8%95%E0%B8%B4%E0%B8%94%E0%B8%95%E0%B9%88%E0%B8%AD%E0%B8%AA%E0%B8%AD%E0%B8%9A%E0%B8%96%E0%B8%B2%E0%B8%A1%E0%B8%9B%E0%B8%A3%E0%B8%B0%E0%B8%8A%E0%B8%B2%E0%B8%8A%E0%B8%99/?utm_source=',
+    },
+  },
+  {
+    phone: '0620314389',
+    scamType: 'แอบอ้างเป็นเจ้าหน้าที่ธนาคารกรุงไทย ใช้เบอร์ส่วนตัวโทรสอบถามข้อมูล',
+    status: 'reported',
+    riskLevel: 'high',
+    source: {
+      organization: 'ธนาคารกรุงไทย / กระทรวงการคลัง',
+      type: 'government',
+      publishedDate: '2025-09-17',
+      url: 'https://www.antifakenewscenter.com/%E0%B8%81%E0%B8%B2%E0%B8%A3%E0%B9%80%E0%B8%87%E0%B8%B4%E0%B8%99-%E0%B8%AB%E0%B8%B8%E0%B9%89%E0%B8%99/%E0%B9%80%E0%B8%88%E0%B9%89%E0%B8%B2%E0%B8%AB%E0%B8%99%E0%B9%89%E0%B8%B2%E0%B8%97%E0%B8%B5%E0%B9%88%E0%B8%98%E0%B8%99%E0%B8%B2%E0%B8%84%E0%B8%B2%E0%B8%A3%E0%B8%81%E0%B8%A3%E0%B8%B8%E0%B8%87%E0%B9%84%E0%B8%97%E0%B8%A2-%E0%B9%83%E0%B8%8A%E0%B9%89%E0%B9%80%E0%B8%9A%E0%B8%AD%E0%B8%A3%E0%B9%8C%E0%B8%AA%E0%B9%88%E0%B8%A7%E0%B8%99%E0%B8%95%E0%B8%B1%E0%B8%A7%E0%B9%82%E0%B8%97%E0%B8%A3%E0%B8%AA%E0%B8%AD%E0%B8%9A%E0%B8%96%E0%B8%B2%E0%B8%A1%E0%B8%82%E0%B9%89%E0%B8%AD%E0%B8%A1%E0%B8%B9%E0%B8%A5%E0%B8%A5%E0%B8%B9%E0%B8%81%E0%B8%84%E0%B9%89%E0%B8%B2/?utm_source=',
+    },
+  },
+  {
+    phone: '0829464808',
+    scamType: 'แอบอ้างเป็นเจ้าหน้าที่ ธอส. โทรสอบถามเลขบัญชีและเลขบัตรประชาชนเพื่ออ้างว่าจะโอนเงินให้',
+    status: 'reported',
+    riskLevel: 'high',
+    source: {
+      organization: 'ธนาคารอาคารสงเคราะห์ (ธอส.) / กระทรวงการคลัง',
+      type: 'government',
+      publishedDate: '2020-12-29',
+      url: 'https://www.ghbank.co.th/news/detail/public-relations/press-dec-29-2020?utm_source=',
     },
   },
 ]
@@ -38,7 +82,7 @@ const getCategoryName = (category) => {
 }
 
 const getReportDetail = (report) => report.highestCategory
-  ? `${report.highestCategory} เป็นประเด็นหลัก โดยมี ${report.count} รายงานในระบบ`
+  ? `${report.highestCategory} · ${report.count} รายงานในระบบ`
   : `มีการรายงานเบอร์นี้ ${report.count} รายงานในระบบ`
 
 const categorySeverity = {
@@ -141,6 +185,7 @@ const getLocalDateKey = (value) => {
 }
 
 const getRiskLevel = (score) => {
+  if (score >= 90) return 'สูงมาก'
   if (score >= 75) return 'สูง'
   if (score >= 40) return 'กลาง'
   return 'ต่ำ'
@@ -148,11 +193,11 @@ const getRiskLevel = (score) => {
 
 const getHistoryRiskBadge = (entry) => {
   const risk = entry.risk ?? entry.riskLevel
-  if (risk === 'อันตราย' || risk === 'danger') return { label: 'อันตราย', tone: 'danger' }
+  if (risk === 'สูงมาก' || risk === 'อันตราย' || risk === 'very-high' || risk === 'danger') return { label: 'ความเสี่ยงสูงมาก', tone: 'very-high' }
   if (risk === 'สูง' || risk === 'high' || risk === 'ความเสี่ยงสูง') return { label: 'ความเสี่ยงสูง', tone: 'high' }
   if (risk === 'กลาง' || risk === 'medium' || risk === 'ควรระวัง') return { label: 'ควรระวัง', tone: 'caution' }
   if (risk === 'ต่ำ' || risk === 'low' || risk === 'ความเสี่ยงต่ำ') return { label: 'ความเสี่ยงต่ำ', tone: 'low' }
-  return { label: 'ข้อมูลน้อย', tone: 'insufficient' }
+  return { label: 'ข้อมูลไม่เพียงพอ', tone: 'insufficient' }
 }
 
 const getScoreColor = (score) => {
@@ -162,11 +207,21 @@ const getScoreColor = (score) => {
 }
 
 const getCheckPopupIcon = (popup) => {
-  if (popup.noHistory) return { className: 'check-popup-icon no-history', icon: '¡' }
+  if (popup.noHistory) return { className: 'check-popup-icon no-history', icon: 'i' }
   if (!popup.found) return { className: 'check-popup-icon search', icon: '?' }
+  if (popup.riskLevel === 'สูงมาก') return { className: 'check-popup-icon risk-very-high', icon: '!' }
   if (popup.riskLevel === 'สูง') return { className: 'check-popup-icon risk-high', icon: '!' }
   if (popup.riskLevel === 'กลาง') return { className: 'check-popup-icon risk-medium', icon: '!' }
-  return { className: 'check-popup-icon reported', icon: '!' }
+  if (popup.riskLevel === 'ต่ำ') return { className: 'check-popup-icon risk-low', icon: '!' }
+  return { className: 'check-popup-icon insufficient', icon: 'i' }
+}
+
+const getRiskTone = (riskLevel) => {
+  if (riskLevel === 'สูงมาก' || riskLevel === 'อันตราย') return 'very-high'
+  if (riskLevel === 'สูง') return 'high'
+  if (riskLevel === 'กลาง') return 'medium'
+  if (riskLevel === 'ต่ำ') return 'low'
+  return 'insufficient'
 }
 
 const SearchIcon = () => (
@@ -319,6 +374,7 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('check')
   const [expandedHistoryPhone, setExpandedHistoryPhone] = useState(null)
+  const [showAllOfficialReports, setShowAllOfficialReports] = useState(false)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => new Date())
   const [checkPhone, setCheckPhone] = useState('')
   const [isChecking, setIsChecking] = useState(false)
@@ -514,6 +570,7 @@ function App() {
             detail: `${officialMatch.scamType} ตามข้อมูลจาก${officialMatch.source.organization}`,
             found: true,
             riskLevel: 'สูง',
+            officialScamType: officialMatch.scamType,
             officialSource: officialMatch.source,
           })
           return
@@ -523,7 +580,7 @@ function App() {
           const hasEnoughReports = match.reporterCount >= REPORT_THRESHOLD
           setCheckPopup({
             phone: normalized,
-            title: hasEnoughReports ? 'เบอร์นี้เคยถูกรายงาน' : 'มีผู้รายงาน',
+            title: hasEnoughReports ? 'มีผู้รายงาน' : 'มีผู้รายงาน',
             detail: hasEnoughReports
               ? getReportDetail(match)
               : 'ยังมีรายงานไม่มากพอที่จะประเมินระดับความเสี่ยง',
@@ -913,10 +970,10 @@ function App() {
           <section className="official-source-section" aria-labelledby="official-source-title">
             <div>
               <h2 id="official-source-title">ข้อมูลจากแหล่งทางการ</h2>
-              <p>ข้อมูลนี้แสดงแยกจากรายงานของผู้ใช้งาน</p>
+              <p>ข้อมูลนี้แสดงแยกจากรายงานของผู้ใช้งาน · {officialReports.length} รายการ</p>
             </div>
             <ul>
-              {officialReports.map((report) => (
+              {officialReports.slice(0, showAllOfficialReports ? undefined : OFFICIAL_REPORTS_PREVIEW_COUNT).map((report) => (
                 <li key={report.phone}>
                   <div className="official-source-record">
                     <strong>{formatPhoneNumber(report.phone)}</strong>
@@ -930,6 +987,19 @@ function App() {
                 </li>
               ))}
             </ul>
+            {officialReports.length > OFFICIAL_REPORTS_PREVIEW_COUNT ? (
+              <button
+                type="button"
+                className="official-source-toggle"
+                aria-expanded={showAllOfficialReports}
+                onClick={() => setShowAllOfficialReports((isExpanded) => !isExpanded)}
+              >
+                {showAllOfficialReports
+                  ? 'แสดงน้อยลง'
+                  : `ดูข้อมูลทั้งหมด (${officialReports.length} รายการ)`}
+                <span aria-hidden="true">{showAllOfficialReports ? '⌃' : '⌄'}</span>
+              </button>
+            ) : null}
           </section>
         ) : null}
 
@@ -1079,26 +1149,82 @@ function App() {
       ) : null}
 
       {checkPopup ? (
-        <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="check-popup-title">
-          <section className={checkPopup.noHistory ? 'check-popup-modal check-popup-no-history' : checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? 'check-popup-modal check-popup-low-reports' : 'check-popup-modal'}>
-            <div className={`${getCheckPopupIcon(checkPopup).className}${checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? ' low-reports' : ''}`}>{getCheckPopupIcon(checkPopup).icon}</div>
-            <h2 id="check-popup-title">{checkPopup.title}</h2>
-            <p className="check-popup-phone">{checkPopup.phone}</p>
-            {checkPopup.detail ? <p className="check-popup-detail">{checkPopup.detail}</p> : null}
-            {checkPopup.riskLevel ? <span className="check-popup-badge">ระดับความเสี่ยง {checkPopup.riskLevel}</span> : null}
+        <div className={`success-overlay${checkPopup.officialSource ? ' official-source-overlay' : ''}`} role="dialog" aria-modal="true" aria-labelledby="check-popup-title">
+          <section className={checkPopup.officialSource ? 'check-popup-modal official-source-modal' : checkPopup.noHistory ? 'check-popup-modal check-popup-no-history' : checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? 'check-popup-modal check-popup-low-reports' : 'check-popup-modal'}>
             {checkPopup.officialSource ? (
-              <p className="check-popup-disclaimer">
-                แหล่งข้อมูล: {checkPopup.officialSource.organization} · เผยแพร่ {formatReportedDate(checkPopup.officialSource.publishedDate)} ·{' '}
-                <a href={checkPopup.officialSource.url} target="_blank" rel="noreferrer">เว็บไซต์ต้นทาง</a>
-              </p>
-            ) : checkPopup.found ? (
-              <p className="check-popup-disclaimer">ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</p>
-            ) : null}
-            {checkPopup.noHistory ? <p className="check-popup-safety-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0-8h.01" /></svg><span>ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</span></p> : null}
-            <p className="check-popup-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
-            <button type="button" className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>รายงานเบอร์นี้</button>
-            <button type="button" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ยกเลิก</button>
-            {checkPopup.found ? <button type="button" className="check-popup-link" onClick={handleOpenDisputeForm}>เป็นเจ้าของเบอร์นี้? ขอให้ตรวจสอบ</button> : null}
+              <>
+                <button type="button" className="official-source-close" aria-label="ปิดหน้าต่าง" onClick={() => setCheckPopup(null)}>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="m6 6 12 12M18 6 6 18" /></svg>
+                </button>
+                <div className="official-source-alert-icon" aria-hidden="true">
+                  <svg viewBox="0 0 64 64" fill="none">
+                    <path d="M32 18v20" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+                    <circle cx="32" cy="47" r="3.5" fill="currentColor" />
+                    <path d="m12 19 5 4m-6 9h6m-5 12 5-4m30-21-5 4m11 9h-6m5 12-5-4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <h2 id="check-popup-title">พบข้อมูลจากแหล่งทางการ</h2>
+                <p className="official-source-phone">{checkPopup.phone}</p>
+                <p className="official-source-scam-type">{checkPopup.officialScamType}</p>
+                <p className="official-source-context">ตามข้อมูลจาก{checkPopup.officialSource.organization}</p>
+                <div className={`official-source-risk-pill ${getRiskTone(checkPopup.riskLevel)}`}>
+                  <WarningIcon />
+                  <span>ระดับความเสี่ยง {checkPopup.riskLevel}</span>
+                </div>
+                <p className="official-source-summary">มีการรายงานเกี่ยวกับการ{checkPopup.officialScamType}</p>
+
+                <div className="official-source-card">
+                  <div className="official-source-card-heading">
+                    <span className="official-source-shield">
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 3.5 5v6.2c0 5.2 3.6 9.9 8.5 11.3 4.9-1.4 8.5-6.1 8.5-11.3V5L12 2Zm-1.1 14.7-4-4 1.5-1.5 2.5 2.5 4.7-4.7 1.5 1.5-6.2 6.2Z" /></svg>
+                    </span>
+                    <strong>แหล่งข้อมูลทางการ</strong>
+                  </div>
+                  <p className="official-source-organization">{checkPopup.officialSource.organization}</p>
+                  <p className="official-source-date">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3.5" y="5" width="17" height="16" rx="2" /><path strokeLinecap="round" d="M7.5 3v4m9-4v4M4 9.5h16" /></svg>
+                    <span>เผยแพร่ {formatReportedDate(checkPopup.officialSource.publishedDate)}</span>
+                  </p>
+                  <a className="official-source-link" href={checkPopup.officialSource.url} target="_blank" rel="noreferrer">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 5h6v6m-9 4 9-9M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></svg>
+                    <span>ดูข้อมูลจากเว็บไซต์ต้นทาง</span>
+                    <span aria-hidden="true">↗</span>
+                  </a>
+                </div>
+
+                <p className="official-source-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
+                <button type="button" className="success-home-button check-popup-report-button official-source-report-button" onClick={handleReportFromCheck}>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9.5a1.5 1.5 0 0 0-1.5 1.5v2A1.5 1.5 0 0 0 3 14.5h2.2l1.7 4.1a1 1 0 0 0 .92.62h1.5a1 1 0 0 0 .93-1.37L8.8 14.5h.7l9 5a1 1 0 0 0 1.5-.87V5.37a1 1 0 0 0-1.5-.87l-9 5H3Zm16-1.42 3.5-2.02v11.88L19 15.92V8.08Z" /></svg>
+                  รายงานเบอร์นี้
+                </button>
+                <button type="button" className="check-popup-cancel-button official-source-cancel-button" onClick={() => setCheckPopup(null)}>ยกเลิก</button>
+                <button type="button" className="official-source-dispute-link" onClick={handleOpenDisputeForm}>
+                  <span className="official-source-info-icon">i</span>
+                  <span><strong>ข้อมูลนี้ไม่ถูกต้องใช่ไหม?</strong><small>แจ้งให้เราตรวจสอบข้อมูลนี้</small></span>
+                  <span className="official-source-dispute-arrow" aria-hidden="true">›</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <div className={`${getCheckPopupIcon(checkPopup).className}${checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? ' low-reports' : ''}`}>{getCheckPopupIcon(checkPopup).icon}</div>
+                <h2 id="check-popup-title">{checkPopup.title}</h2>
+                <p className="check-popup-phone">{checkPopup.phone}</p>
+                {checkPopup.detail ? <p className="check-popup-detail">{checkPopup.detail}</p> : null}
+                {checkPopup.riskLevel ? (
+                  <span className={`check-popup-badge ${getRiskTone(checkPopup.riskLevel)}`}>ระดับความเสี่ยง {checkPopup.riskLevel}</span>
+                ) : checkPopup.noHistory || checkPopup.reporterCount > 0 ? (
+                  <span className="check-popup-badge insufficient">
+                    {checkPopup.noHistory ? 'ยังไม่มีประวัติ' : 'ข้อมูลไม่เพียงพอ'}
+                  </span>
+                ) : null}
+                {checkPopup.found ? <p className="check-popup-disclaimer">ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</p> : null}
+                {checkPopup.noHistory ? <p className="check-popup-safety-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0-8h.01" /></svg><span>ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</span></p> : null}
+                <p className="check-popup-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
+                <button type="button" className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>รายงานเบอร์นี้</button>
+                <button type="button" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ยกเลิก</button>
+                {checkPopup.found ? <button type="button" className="check-popup-link" onClick={handleOpenDisputeForm}>เป็นเจ้าของเบอร์นี้? ขอให้ตรวจสอบ</button> : null}
+              </>
+            )}
           </section>
         </div>
       ) : null}
