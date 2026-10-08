@@ -10,7 +10,7 @@ const officialSource = {
   publishedDate: '2025-03-15',
   url: 'https://saiyok.kanchanaburi.police.go.th/%E0%B9%81%E0%B8%88%E0%B9%89%E0%B8%87%E0%B9%80%E0%B8%95%E0%B8%B7%E0%B8%AD%E0%B8%99%E0%B8%A0%E0%B8%B1%E0%B8%A2-%E0%B8%A1%E0%B8%B4%E0%B8%88%E0%B8%89%E0%B8%B2%E0%B8%8A%E0%B8%B5%E0%B8%9E%E0%B9%81%E0%B8%AD/',
 }
-const officialScamType = 'แอบอ้างเป็นตำรวจ'
+const officialScamType = 'แอบอ้างหน่วยงานรัฐ'
 const officialReports = [
   ...[
     '0633800897',
@@ -26,7 +26,7 @@ const officialReports = [
   })),
   {
     phone: '0660952909',
-    scamType: 'แอบอ้างเป็นเจ้าหน้าที่ธนาคารกรุงไทย โทรสอบถามธุรกรรมผิดปกติ',
+    scamType: 'แอบอ้างธนาคาร',
     status: 'reported',
     riskLevel: 'high',
     source: {
@@ -78,7 +78,17 @@ const categoryNames = {
 
 const getCategoryName = (category) => {
   if (!category) return ''
+  if (category === 'แอบอ้างเป็นตำรวจ') return categoryNames.scam
+  if (category === 'แอบอ้างหน่วยงานรัฐ') return categoryNames.scam
+  if (category === 'แอบอ้างธนาคาร') return categoryNames.bank
   return categoryNames[category] || category
+}
+
+const getOfficialCategoryName = (report) => {
+  const scamType = report.scamType || ''
+  if (/ธนาคาร|ธอส\./.test(scamType)) return categoryNames.bank
+  if (/ตำรวจ|หน่วยงานรัฐ|หน่วยงานราชการ/.test(scamType)) return categoryNames.scam
+  return getCategoryName(scamType) || 'ไม่ระบุประเภท'
 }
 
 const getReportDetail = (report) => report.highestCategory
@@ -150,6 +160,15 @@ const formatPhoneNumber = (value) => {
   if (phone.length === 10) return `${phone.slice(0, 3)}-${phone.slice(3, 6)}-${phone.slice(6)}`
   if (phone.length === 9) return `${phone.slice(0, 2)}-${phone.slice(2, 5)}-${phone.slice(5)}`
   return phone
+}
+
+const maskPhoneNumber = (value) => {
+  const phone = normalizePhone(value || '')
+  if (phone.length === 10) return `${phone.slice(0, 3)}-${phone.slice(3, 6)}-****`
+  if (phone.length === 9) return `${phone.slice(0, 2)}-***-****`
+  if (phone.length <= 1) return '*'
+  const visibleDigits = Math.min(3, phone.length - 1)
+  return `${phone.slice(0, visibleDigits)}${'*'.repeat(phone.length - visibleDigits)}`
 }
 
 const formatReportedAt = (value) => new Intl.DateTimeFormat('th-TH', {
@@ -374,6 +393,7 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('check')
   const [expandedHistoryPhone, setExpandedHistoryPhone] = useState(null)
+  const [selectedFrequentCategory, setSelectedFrequentCategory] = useState(null)
   const [showAllOfficialReports, setShowAllOfficialReports] = useState(false)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => new Date())
   const [checkPhone, setCheckPhone] = useState('')
@@ -403,6 +423,9 @@ function App() {
     link: '',
     detail: '',
   })
+  const officialPopupReportCount = checkPopup?.officialSource
+    ? officialReports.filter((report) => report.phone === checkPopup.phone).length
+    : 0
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTimestamp(new Date()), 30000)
@@ -494,6 +517,78 @@ function App() {
     return { categories }
   }, [reports])
 
+  const frequentCategorySummary = useMemo(() => {
+    const categoryCounts = new Map()
+    const addCount = (category, source) => {
+      const entry = categoryCounts.get(category) || { community: 0, official: 0 }
+      entry[source] += 1
+      categoryCounts.set(category, entry)
+    }
+
+    reports.forEach((report) => {
+      addCount(getCategoryName(report.category) || 'ไม่ระบุประเภท', 'community')
+    })
+    officialReports.forEach((report) => {
+      addCount(getOfficialCategoryName(report), 'official')
+    })
+
+    const categories = [...categoryCounts.entries()]
+      .map(([category, counts]) => ({
+        category,
+        count: counts.community + counts.official,
+      }))
+      .sort((first, second) => second.count - first.count)
+    const total = reports.length + officialReports.length
+
+    return { categories, total }
+  }, [reports])
+
+  const selectedCategoryReports = useMemo(() => {
+    if (!selectedFrequentCategory) return null
+
+    const includedCategories = new Set(selectedFrequentCategory.categories)
+    const communityCategoryReports = reports.filter((report) => (
+      includedCategories.has(getCategoryName(report.category) || 'ไม่ระบุประเภท')
+    ))
+    const officialCategoryReports = officialReports.filter((report) => (
+      includedCategories.has(getOfficialCategoryName(report))
+    ))
+    const reportsByPhone = new Map()
+
+    const addPhoneReport = (report, source) => {
+      const normalizedPhone = normalizePhone(report.phone || '')
+      const key = normalizedPhone || 'unknown'
+      const entry = reportsByPhone.get(key) || { phone: normalizedPhone, communityCount: 0, officialCount: 0 }
+      entry[`${source}Count`] += 1
+      reportsByPhone.set(key, entry)
+    }
+
+    communityCategoryReports.forEach((report) => addPhoneReport(report, 'community'))
+    officialCategoryReports.forEach((report) => addPhoneReport(report, 'official'))
+    const phones = [...reportsByPhone.values()]
+      .map((entry) => ({
+        ...entry,
+        count: entry.communityCount + entry.officialCount,
+      }))
+      .sort((first, second) => second.count - first.count)
+
+    return {
+      total: communityCategoryReports.length + officialCategoryReports.length,
+      phones,
+    }
+  }, [reports, selectedFrequentCategory])
+
+  useEffect(() => {
+    if (!selectedFrequentCategory) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setSelectedFrequentCategory(null)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedFrequentCategory])
+
   useEffect(() => {
     const normalized = normalizePhone(checkPhone)
     if (!normalized) {
@@ -566,7 +661,7 @@ function App() {
         if (officialMatch) {
           setCheckPopup({
             phone: normalized,
-            title: 'พบข้อมูลจากแหล่งทางการ',
+            title: 'พบรายงานจากแหล่งทางการ',
             detail: `${officialMatch.scamType} ตามข้อมูลจาก${officialMatch.source.organization}`,
             found: true,
             riskLevel: 'สูง',
@@ -585,8 +680,10 @@ function App() {
               ? getReportDetail(match)
               : 'ยังมีรายงานไม่มากพอที่จะประเมินระดับความเสี่ยง',
             found: true,
+            reportCount: match.count,
             reporterCount: match.reporterCount,
             riskLevel: hasEnoughReports ? match.riskLevel : null,
+            highestCategory: match.highestCategory,
           })
           return
         }
@@ -968,9 +1065,13 @@ function App() {
 
         {officialReports.length > 0 ? (
           <section className="official-source-section" aria-labelledby="official-source-title">
-            <div>
-              <h2 id="official-source-title">ข้อมูลจากแหล่งทางการ</h2>
-              <p>ข้อมูลนี้แสดงแยกจากรายงานของผู้ใช้งาน · {officialReports.length} รายการ</p>
+            <div className="community-heading">
+              <span className="community-heading-icon"><ReportIcon /></span>
+              <div>
+                <h2 id="official-source-title">รายงานจากแหล่งทางการ</h2>
+                <p>ข้อมูลจากหน่วยงานที่น่าเชื่อถือ</p>
+              </div>
+              <span className="community-total">{officialReports.length} รายการ</span>
             </div>
             <ul>
               {officialReports.slice(0, showAllOfficialReports ? undefined : OFFICIAL_REPORTS_PREVIEW_COUNT).map((report) => (
@@ -1062,15 +1163,38 @@ function App() {
               <h3>ประเภทการรายงานที่พบบ่อย</h3>
               <ul className="category-bars">
                 {[
-                  ...communitySummary.categories.slice(0, 5),
-                  ...(communitySummary.categories.length > 5
-                    ? [['ประเภทอื่น ๆ', communitySummary.categories.slice(5).reduce((total, [, count]) => total + count, 0)]]
+                ...frequentCategorySummary.categories.slice(0, 5).map(({ category, count }) => ({
+                    category,
+                    count,
+                    includedCategories: [category],
+                  })),
+                ...(frequentCategorySummary.categories.length > 5
+                    ? [{
+                      category: 'ประเภทอื่น ๆ',
+                    count: frequentCategorySummary.categories.slice(5).reduce((total, { count: categoryCount }) => total + categoryCount, 0),
+                    includedCategories: frequentCategorySummary.categories.slice(5).map(({ category }) => category),
+                    }]
                     : []),
-                ].map(([category, count]) => (
+                ].map(({ category, count, includedCategories }) => (
                   <li key={category}>
-                    <div className="category-bar-label"><span>{category}</span><strong>{count} รายงาน</strong></div>
-                    <div className="category-track" role="img" aria-label={`${category} ${Math.round((count / reports.length) * 100)} เปอร์เซ็นต์`}>
-                      <span style={{ width: `${(count / reports.length) * 100}%` }} />
+                    <div className="category-bar-label">
+                      <button
+                        type="button"
+                        className="category-name-button"
+                        onClick={() => setSelectedFrequentCategory({ name: category, categories: includedCategories })}
+                      >
+                        {category}
+                      </button>
+                      <button
+                        type="button"
+                        className="category-count-button"
+                        onClick={() => setSelectedFrequentCategory({ name: category, categories: includedCategories })}
+                      >
+                        {count} ครั้ง
+                      </button>
+                    </div>
+                    <div className="category-track" role="img" aria-label={`${category} ${Math.round((count / frequentCategorySummary.total) * 100)} เปอร์เซ็นต์`}>
+                      <span style={{ width: `${(count / frequentCategorySummary.total) * 100}%` }} />
                     </div>
                   </li>
                 ))}
@@ -1108,6 +1232,33 @@ function App() {
           <span>ประวัติ</span>
         </button>
       </nav>
+
+      {selectedFrequentCategory && selectedCategoryReports ? (
+        <div
+          className="success-overlay category-detail-overlay"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setSelectedFrequentCategory(null)
+          }}
+        >
+          <section className="category-detail-modal" role="dialog" aria-modal="true" aria-labelledby="category-detail-title">
+            <button type="button" className="modal-close" aria-label="ปิดรายละเอียด" onClick={() => setSelectedFrequentCategory(null)}>×</button>
+            <h2 id="category-detail-title">{selectedFrequentCategory.name}</h2>
+            <p className="category-detail-total">{selectedCategoryReports.total} รายงาน</p>
+            {selectedCategoryReports.phones.length > 0 ? (
+              <ul className="category-detail-list">
+                {selectedCategoryReports.phones.map(({ phone, count, communityCount, officialCount }) => (
+                  <li key={phone || 'unknown'}>
+                    <strong>{phone ? maskPhoneNumber(phone) : 'ไม่ระบุหมายเลข'}</strong>
+                    <span>{count} รายงาน</span>
+                    <small>ชุมชน {communityCount} / แหล่งทางการ {officialCount}</small>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="category-detail-empty">ไม่พบหมายเลขในประเภทนี้</p>}
+          </section>
+        </div>
+      ) : null}
 
       {successReport ? (
         <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="success-title">
@@ -1151,27 +1302,26 @@ function App() {
       {checkPopup ? (
         <div className={`success-overlay${checkPopup.officialSource ? ' official-source-overlay' : ''}`} role="dialog" aria-modal="true" aria-labelledby="check-popup-title">
           <section className={checkPopup.officialSource ? 'check-popup-modal official-source-modal' : checkPopup.noHistory ? 'check-popup-modal check-popup-no-history' : checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? 'check-popup-modal check-popup-low-reports' : 'check-popup-modal'}>
+            <button type="button" className="modal-close" aria-label="ปิดหน้าต่าง" onClick={() => setCheckPopup(null)}>×</button>
             {checkPopup.officialSource ? (
               <>
-                <button type="button" className="official-source-close" aria-label="ปิดหน้าต่าง" onClick={() => setCheckPopup(null)}>
-                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" d="m6 6 12 12M18 6 6 18" /></svg>
-                </button>
                 <div className="official-source-alert-icon" aria-hidden="true">
-                  <svg viewBox="0 0 64 64" fill="none">
-                    <path d="M32 18v20" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
-                    <circle cx="32" cy="47" r="3.5" fill="currentColor" />
-                    <path d="m12 19 5 4m-6 9h6m-5 12 5-4m30-21-5 4m11 9h-6m5 12-5-4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 4.5 6v5.2c0 4.4 3 8.4 7.5 9.8 4.5-1.4 7.5-5.4 7.5-9.8V6L12 3Z" />
+                    <path strokeLinecap="round" d="M12 8v4m0 3h.01" />
                   </svg>
                 </div>
                 <h2 id="check-popup-title">พบข้อมูลจากแหล่งทางการ</h2>
-                <p className="official-source-phone">{checkPopup.phone}</p>
-                <p className="official-source-scam-type">{checkPopup.officialScamType}</p>
-                <p className="official-source-context">ตามข้อมูลจาก{checkPopup.officialSource.organization}</p>
+                <p className="official-source-phone">{formatPhoneNumber(checkPopup.phone)}</p>
                 <div className={`official-source-risk-pill ${getRiskTone(checkPopup.riskLevel)}`}>
                   <WarningIcon />
-                  <span>ระดับความเสี่ยง {checkPopup.riskLevel}</span>
+                  <span>ความเสี่ยงสูง</span>
                 </div>
-                <p className="official-source-summary">มีการรายงานเกี่ยวกับการ{checkPopup.officialScamType}</p>
+                <div className="check-popup-summary">
+                  <span>ประเภทการรายงาน</span><strong>{checkPopup.officialScamType}</strong>
+                  <span>จำนวนรายงาน</span><strong>{officialPopupReportCount} ครั้ง</strong>
+                  <span>แหล่งข้อมูล</span><strong>แหล่งทางการ</strong>
+                </div>
 
                 <div className="official-source-card">
                   <div className="official-source-card-heading">
@@ -1192,36 +1342,57 @@ function App() {
                   </a>
                 </div>
 
-                <p className="official-source-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
                 <button type="button" className="success-home-button check-popup-report-button official-source-report-button" onClick={handleReportFromCheck}>
                   <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9.5a1.5 1.5 0 0 0-1.5 1.5v2A1.5 1.5 0 0 0 3 14.5h2.2l1.7 4.1a1 1 0 0 0 .92.62h1.5a1 1 0 0 0 .93-1.37L8.8 14.5h.7l9 5a1 1 0 0 0 1.5-.87V5.37a1 1 0 0 0-1.5-.87l-9 5H3Zm16-1.42 3.5-2.02v11.88L19 15.92V8.08Z" /></svg>
                   รายงานเบอร์นี้
                 </button>
-                <button type="button" className="check-popup-cancel-button official-source-cancel-button" onClick={() => setCheckPopup(null)}>ยกเลิก</button>
-                <button type="button" className="official-source-dispute-link" onClick={handleOpenDisputeForm}>
-                  <span className="official-source-info-icon">i</span>
-                  <span><strong>ข้อมูลนี้ไม่ถูกต้องใช่ไหม?</strong><small>แจ้งให้เราตรวจสอบข้อมูลนี้</small></span>
-                  <span className="official-source-dispute-arrow" aria-hidden="true">›</span>
-                </button>
+                <button type="button" className="check-popup-cancel-button official-source-cancel-button" onClick={() => setCheckPopup(null)}>ปิด</button>
+                <button type="button" className="check-popup-link" onClick={handleOpenDisputeForm}>เป็นเจ้าของเบอร์นี้? ขอให้ตรวจสอบ</button>
               </>
             ) : (
               <>
-                <div className={`${getCheckPopupIcon(checkPopup).className}${checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? ' low-reports' : ''}`}>{getCheckPopupIcon(checkPopup).icon}</div>
+                <div className={`${checkPopup.noHistory ? 'check-popup-icon no-history' : getCheckPopupIcon(checkPopup).className}${checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? ' low-reports' : ''}`}>
+                  {checkPopup.noHistory
+                    ? <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 11v5m0-8h.01" /></svg>
+                    : checkPopup.riskLevel === 'ต่ำ'
+                      ? <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path strokeLinecap="round" strokeLinejoin="round" d="m5 12 4 4L19 6" /></svg>
+                    : checkPopup.found
+                      ? <WarningIcon />
+                      : getCheckPopupIcon(checkPopup).icon}
+                </div>
                 <h2 id="check-popup-title">{checkPopup.title}</h2>
-                <p className="check-popup-phone">{checkPopup.phone}</p>
-                {checkPopup.detail ? <p className="check-popup-detail">{checkPopup.detail}</p> : null}
+                <span className="check-popup-number-label">หมายเลขโทรศัพท์</span>
+                <p className="check-popup-phone">{formatPhoneNumber(checkPopup.phone)}</p>
                 {checkPopup.riskLevel ? (
-                  <span className={`check-popup-badge ${getRiskTone(checkPopup.riskLevel)}`}>ระดับความเสี่ยง {checkPopup.riskLevel}</span>
+                  <span className={`check-popup-badge ${getRiskTone(checkPopup.riskLevel)}`}>
+                    {getRiskTone(checkPopup.riskLevel) === 'low'
+                      ? <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path strokeLinecap="round" strokeLinejoin="round" d="m5 12 4 4L19 6" /></svg>
+                      : <WarningIcon />}
+                    {checkPopup.riskLevel === 'กลาง' ? 'ควรระวัง' : `ความเสี่ยง${checkPopup.riskLevel}`}
+                  </span>
                 ) : checkPopup.noHistory || checkPopup.reporterCount > 0 ? (
-                  <span className="check-popup-badge insufficient">
-                    {checkPopup.noHistory ? 'ยังไม่มีประวัติ' : 'ข้อมูลไม่เพียงพอ'}
+                  <span className={`check-popup-badge ${checkPopup.noHistory ? 'no-data' : 'insufficient'}`}>
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 11v5m0-8h.01" /></svg>
+                    {checkPopup.noHistory ? 'ยังไม่มีข้อมูล' : 'ข้อมูลไม่เพียงพอ'}
                   </span>
                 ) : null}
-                {checkPopup.found ? <p className="check-popup-disclaimer">ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</p> : null}
+                <div className="check-popup-summary">
+                  <span>ประเภทการรายงาน</span><strong>{checkPopup.highestCategory || '—'}</strong>
+                  <span>จำนวนรายงาน</span><strong>{checkPopup.reportCount || 0} ครั้ง</strong>
+                  <span>แหล่งข้อมูล</span><strong>{checkPopup.found ? 'ชุมชน' : 'ยังไม่มีข้อมูล'}</strong>
+                </div>
+                {checkPopup.detail && (!checkPopup.found || !checkPopup.reportCount || !checkPopup.riskLevel)
+                  ? <p className="check-popup-detail">{checkPopup.detail}</p>
+                  : null}
+                {checkPopup.found ? (
+                  <div className="check-popup-disclaimer" role="note">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 11v5m0-8h.01" /></svg>
+                    <span>ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</span>
+                  </div>
+                ) : null}
                 {checkPopup.noHistory ? <p className="check-popup-safety-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0-8h.01" /></svg><span>ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</span></p> : null}
-                <p className="check-popup-question">ต้องการรายงานเบอร์นี้หรือไม่?</p>
                 <button type="button" className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>รายงานเบอร์นี้</button>
-                <button type="button" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ยกเลิก</button>
+                <button type="button" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ปิด</button>
                 {checkPopup.found ? <button type="button" className="check-popup-link" onClick={handleOpenDisputeForm}>เป็นเจ้าของเบอร์นี้? ขอให้ตรวจสอบ</button> : null}
               </>
             )}
@@ -1232,6 +1403,7 @@ function App() {
       {showDisputeForm ? (
         <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="dispute-title">
           <section className="check-popup-modal dispute-modal">
+            <button type="button" className="modal-close" aria-label="ปิดหน้าต่าง" disabled={isDisputeSubmitting} onClick={() => setShowDisputeForm(false)}>×</button>
             {disputeSent ? (
               <div className="dispute-success" role="status">
                 <h2 id="dispute-title">ส่งคำขอตรวจสอบแล้ว</h2>
