@@ -195,13 +195,27 @@ const formatReportedTime = (value) => new Intl.DateTimeFormat('th-TH', {
   minute: '2-digit',
 }).format(new Date(value))
 
-const getLocalDateKey = (value) => {
+const bangkokDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Bangkok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+const getBangkokDateKey = (value) => {
   const date = new Date(value)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  if (!Number.isFinite(date.getTime())) return null
+
+  const parts = Object.fromEntries(
+    bangkokDateFormatter.formatToParts(date).map(({ type, value: partValue }) => [type, partValue]),
+  )
+  return `${parts.year}-${parts.month}-${parts.day}`
 }
+
+const formatBangkokDate = (value) => new Intl.DateTimeFormat('th-TH', {
+  dateStyle: 'medium',
+  timeZone: 'Asia/Bangkok',
+}).format(value)
 
 const getRiskLevel = (score) => {
   if (score >= 90) return 'สูงมาก'
@@ -342,6 +356,39 @@ const mapReportToDatabase = (report) => ({
   reported_at: report.reportedAt,
   date: report.date,
 })
+
+function ReportModal({ className = '', titleId, onClose, children }) {
+  return (
+    <section className={`check-popup-modal ${className}`} aria-labelledby={titleId}>
+      <button type="button" className="modal-close" aria-label="ปิดหน้าต่าง" onClick={onClose}>×</button>
+      {children}
+    </section>
+  )
+}
+
+function DetailCard({ className = '', children }) {
+  return <div className={`report-detail-card ${className}`}>{children}</div>
+}
+
+function AlertBanner({ as: Element = 'div', className = '', children, ...props }) {
+  return <Element className={`report-alert-banner ${className}`} {...props}>{children}</Element>
+}
+
+function StatusBadge({ className = '', children }) {
+  return <span className={`report-status-badge ${className}`}>{children}</span>
+}
+
+function ModalButton({ variant = 'primary', type = 'button', className = '', children, ...props }) {
+  return (
+    <button
+      {...props}
+      type={type}
+      className={`report-modal-button report-modal-button-${variant} ${className}`}
+    >
+      {children}
+    </button>
+  )
+}
 
 function App() {
   const currentReporterId = getReporterId()
@@ -499,12 +546,28 @@ function App() {
   }, [currentReporterId, historyByPhone, reports])
 
   const yesterdaySummary = useMemo(() => {
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
-    const dateKey = getLocalDateKey(yesterday)
-    const yesterdayReports = reports.filter((report) => getLocalDateKey(report.reportedAt || report.date) === dateKey)
-    return { date: yesterday, reports: yesterdayReports }
-  }, [reports])
+    const todayParts = Object.fromEntries(
+      bangkokDateFormatter.formatToParts(currentTimestamp)
+        .map(({ type, value }) => [type, Number(value)]),
+    )
+    const yesterday = new Date(Date.UTC(todayParts.year, todayParts.month - 1, todayParts.day - 1))
+    const dateKey = getBangkokDateKey(yesterday)
+    const yesterdayReports = reports.filter((report) => (
+      getBangkokDateKey(report.reportedAt || report.date) === dateKey
+    ))
+    const categoryCounts = new Map()
+
+    yesterdayReports.forEach((report) => {
+      const category = getCategoryName(report.category) || 'ไม่ระบุประเภท'
+      categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1)
+    })
+
+    const categories = [...categoryCounts.entries()].sort((first, second) => (
+      second[1] - first[1] || first[0].localeCompare(second[0], 'th')
+    ))
+
+    return { date: yesterday, dateKey, total: yesterdayReports.length, categories }
+  }, [currentTimestamp, reports])
 
   const communitySummary = useMemo(() => {
     const categoryCounts = reports.reduce((counts, report) => {
@@ -1121,19 +1184,43 @@ function App() {
               </div>
               <div>
                 <strong>{getUniqueReporterCount(reports)}</strong>
-                <span>แหล่งรายงานที่ไม่ซ้ำ</span>
+                <span>เบอร์โทรศัพท์ที่ถูกรายงานที่ไม่ซ้ำ</span>
               </div>
             </div>
           ) : null}
 
           <div className="daily-summary" aria-live="polite">
-            <div>
-              <strong>รายงานเมื่อวาน</strong>
-              <time dateTime={getLocalDateKey(yesterdaySummary.date)}>{formatReportedDate(yesterdaySummary.date)}</time>
+            <div className="daily-summary-header">
+              <strong>ประเภทที่มีการรายงานเมื่อวาน</strong>
+              <time dateTime={yesterdaySummary.dateKey}>{formatBangkokDate(yesterdaySummary.date)}</time>
             </div>
-            {yesterdaySummary.reports.length > 0
-              ? <p>มีรายงานใหม่ {yesterdaySummary.reports.length} รายการ</p>
-              : <p>เมื่อวานยังไม่มีรายงาน</p>}
+            {reportsLoading ? (
+              <p className="yesterday-summary-loading"><span className="loading-spinner" />กำลังโหลดรายงาน</p>
+            ) : yesterdaySummary.total > 0 ? (
+              <>
+                <div className="yesterday-summary-total">
+                  <span>รายงานใหม่ทั้งหมด</span>
+                  <strong>{yesterdaySummary.total} รายงาน</strong>
+                </div>
+                <ul className="yesterday-category-list">
+                  {yesterdaySummary.categories.map(([category, count]) => (
+                    <li key={category}>
+                      <span className="category-dot" aria-hidden="true" />
+                      <span>{category}</span>
+                      <strong>{count} รายงาน</strong>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <div className="yesterday-summary-empty">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                  <rect x="3" y="5" width="18" height="16" rx="2" />
+                  <path strokeLinecap="round" d="M16 3v4M8 3v4M3 10h18m-11 5 2 2 4-4" />
+                </svg>
+                <strong>เมื่อวานไม่มีรายงานใหม่</strong>
+              </div>
+            )}
           </div>
 
           {reportsLoading ? (
@@ -1300,103 +1387,84 @@ function App() {
       ) : null}
 
       {checkPopup ? (
-        <div className={`success-overlay${checkPopup.officialSource ? ' official-source-overlay' : ''}`} role="dialog" aria-modal="true" aria-labelledby="check-popup-title">
-          <section className={checkPopup.officialSource ? 'check-popup-modal official-source-modal' : checkPopup.noHistory ? 'check-popup-modal check-popup-no-history' : checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? 'check-popup-modal check-popup-low-reports' : 'check-popup-modal'}>
-            <button type="button" className="modal-close" aria-label="ปิดหน้าต่าง" onClick={() => setCheckPopup(null)}>×</button>
-            {checkPopup.officialSource ? (
-              <>
-                <div className="official-source-alert-icon" aria-hidden="true">
-                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 4.5 6v5.2c0 4.4 3 8.4 7.5 9.8 4.5-1.4 7.5-5.4 7.5-9.8V6L12 3Z" />
-                    <path strokeLinecap="round" d="M12 8v4m0 3h.01" />
-                  </svg>
-                </div>
-                <h2 id="check-popup-title">พบข้อมูลจากแหล่งทางการ</h2>
-                <p className="official-source-phone">{formatPhoneNumber(checkPopup.phone)}</p>
-                <div className={`official-source-risk-pill ${getRiskTone(checkPopup.riskLevel)}`}>
-                  <WarningIcon />
-                  <span>ความเสี่ยงสูง</span>
-                </div>
-                <div className="check-popup-summary">
-                  <span>ประเภทการรายงาน</span><strong>{checkPopup.officialScamType}</strong>
-                  <span>จำนวนรายงาน</span><strong>{officialPopupReportCount} ครั้ง</strong>
-                  <span>แหล่งข้อมูล</span><strong>แหล่งทางการ</strong>
-                </div>
-
-                <div className="official-source-card">
-                  <div className="official-source-card-heading">
-                    <span className="official-source-shield">
-                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 3.5 5v6.2c0 5.2 3.6 9.9 8.5 11.3 4.9-1.4 8.5-6.1 8.5-11.3V5L12 2Zm-1.1 14.7-4-4 1.5-1.5 2.5 2.5 4.7-4.7 1.5 1.5-6.2 6.2Z" /></svg>
-                    </span>
-                    <strong>แหล่งข้อมูลทางการ</strong>
-                  </div>
-                  <p className="official-source-organization">{checkPopup.officialSource.organization}</p>
-                  <p className="official-source-date">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3.5" y="5" width="17" height="16" rx="2" /><path strokeLinecap="round" d="M7.5 3v4m9-4v4M4 9.5h16" /></svg>
-                    <span>เผยแพร่ {formatReportedDate(checkPopup.officialSource.publishedDate)}</span>
-                  </p>
-                  <a className="official-source-link" href={checkPopup.officialSource.url} target="_blank" rel="noreferrer">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 5h6v6m-9 4 9-9M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></svg>
-                    <span>ดูข้อมูลจากเว็บไซต์ต้นทาง</span>
-                    <span aria-hidden="true">↗</span>
-                  </a>
-                </div>
-
-                <button type="button" className="success-home-button check-popup-report-button official-source-report-button" onClick={handleReportFromCheck}>
-                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9.5a1.5 1.5 0 0 0-1.5 1.5v2A1.5 1.5 0 0 0 3 14.5h2.2l1.7 4.1a1 1 0 0 0 .92.62h1.5a1 1 0 0 0 .93-1.37L8.8 14.5h.7l9 5a1 1 0 0 0 1.5-.87V5.37a1 1 0 0 0-1.5-.87l-9 5H3Zm16-1.42 3.5-2.02v11.88L19 15.92V8.08Z" /></svg>
-                  รายงานเบอร์นี้
-                </button>
-                <button type="button" className="check-popup-cancel-button official-source-cancel-button" onClick={() => setCheckPopup(null)}>ปิด</button>
-                <button type="button" className="check-popup-link" onClick={handleOpenDisputeForm}>เป็นเจ้าของเบอร์นี้? ขอให้ตรวจสอบ</button>
-              </>
-            ) : (
-              <>
-                <div className={`${checkPopup.noHistory ? 'check-popup-icon no-history' : getCheckPopupIcon(checkPopup).className}${checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? ' low-reports' : ''}`}>
-                  {checkPopup.noHistory
+        <div className="success-overlay" role="dialog" aria-modal="true" aria-labelledby="check-popup-title">
+          <ReportModal
+            className={checkPopup.noHistory ? 'check-popup-no-history' : checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? 'check-popup-low-reports' : ''}
+            titleId="check-popup-title"
+            onClose={() => setCheckPopup(null)}
+          >
+            <div className="report-modal-header">
+              <div className={`check-popup-icon report-modal-icon ${checkPopup.noHistory ? 'no-history' : checkPopup.officialSource ? 'reported' : getCheckPopupIcon(checkPopup).className}${checkPopup.reporterCount > 0 && checkPopup.reporterCount < REPORT_THRESHOLD ? ' low-reports' : ''}`}>
+                {checkPopup.officialSource
+                  ? <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3 4.5 6v5.2c0 4.4 3 8.4 7.5 9.8 4.5-1.4 7.5-5.4 7.5-9.8V6L12 3Z" /><path strokeLinecap="round" d="M12 8v4m0 3h.01" /></svg>
+                  : checkPopup.noHistory
                     ? <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 11v5m0-8h.01" /></svg>
                     : checkPopup.riskLevel === 'ต่ำ'
                       ? <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path strokeLinecap="round" strokeLinejoin="round" d="m5 12 4 4L19 6" /></svg>
-                    : checkPopup.found
-                      ? <WarningIcon />
-                      : getCheckPopupIcon(checkPopup).icon}
-                </div>
-                <h2 id="check-popup-title">{checkPopup.title}</h2>
-                <span className="check-popup-number-label">หมายเลขโทรศัพท์</span>
-                <p className="check-popup-phone">{formatPhoneNumber(checkPopup.phone)}</p>
-                {checkPopup.riskLevel ? (
-                  <span className={`check-popup-badge ${getRiskTone(checkPopup.riskLevel)}`}>
-                    {getRiskTone(checkPopup.riskLevel) === 'low'
-                      ? <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path strokeLinecap="round" strokeLinejoin="round" d="m5 12 4 4L19 6" /></svg>
-                      : <WarningIcon />}
-                    {checkPopup.riskLevel === 'กลาง' ? 'ควรระวัง' : `ความเสี่ยง${checkPopup.riskLevel}`}
+                      : checkPopup.found
+                        ? <WarningIcon />
+                        : getCheckPopupIcon(checkPopup).icon}
+              </div>
+              <h2 id="check-popup-title">{checkPopup.officialSource ? 'พบข้อมูลจากแหล่งทางการ' : checkPopup.title}</h2>
+            </div>
+            <div className="report-modal-phone">
+              <span className="check-popup-number-label">หมายเลขโทรศัพท์</span>
+              <p className="check-popup-phone">{formatPhoneNumber(checkPopup.phone)}</p>
+            </div>
+            {checkPopup.riskLevel ? (
+              <StatusBadge className={`check-popup-badge ${getRiskTone(checkPopup.riskLevel)}`}>
+                {getRiskTone(checkPopup.riskLevel) === 'low'
+                  ? <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path strokeLinecap="round" strokeLinejoin="round" d="m5 12 4 4L19 6" /></svg>
+                  : <WarningIcon />}
+                {checkPopup.officialSource ? 'ความเสี่ยงสูง' : checkPopup.riskLevel === 'กลาง' ? 'ควรระวัง' : `ความเสี่ยง${checkPopup.riskLevel}`}
+              </StatusBadge>
+            ) : checkPopup.noHistory || checkPopup.reporterCount > 0 ? (
+              <StatusBadge className={`check-popup-badge ${checkPopup.noHistory ? 'no-data' : 'insufficient'}`}>
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 11v5m0-8h.01" /></svg>
+                {checkPopup.noHistory ? 'ยังไม่มีข้อมูล' : 'ข้อมูลไม่เพียงพอ'}
+              </StatusBadge>
+            ) : null}
+            <DetailCard className="check-popup-summary">
+              <span>ประเภทการรายงาน</span><strong>{checkPopup.officialSource ? checkPopup.officialScamType : checkPopup.highestCategory || '—'}</strong>
+              <span>จำนวนรายงาน</span><strong>{checkPopup.officialSource ? officialPopupReportCount : checkPopup.reportCount || 0} ครั้ง</strong>
+              <span>แหล่งข้อมูล</span><strong>{checkPopup.officialSource ? 'แหล่งทางการ' : checkPopup.found ? 'ชุมชน' : 'ยังไม่มีข้อมูล'}</strong>
+            </DetailCard>
+            {!checkPopup.officialSource && checkPopup.detail && (!checkPopup.found || !checkPopup.reportCount || !checkPopup.riskLevel)
+              ? <p className="check-popup-detail">{checkPopup.detail}</p>
+              : null}
+            {checkPopup.officialSource ? (
+              <DetailCard className="official-source-card">
+                <div className="official-source-card-heading">
+                  <span className="official-source-shield">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 3.5 5v6.2c0 5.2 3.6 9.9 8.5 11.3 4.9-1.4 8.5-6.1 8.5-11.3V5L12 2Zm-1.1 14.7-4-4 1.5-1.5 2.5 2.5 4.7-4.7 1.5 1.5-6.2 6.2Z" /></svg>
                   </span>
-                ) : checkPopup.noHistory || checkPopup.reporterCount > 0 ? (
-                  <span className={`check-popup-badge ${checkPopup.noHistory ? 'no-data' : 'insufficient'}`}>
-                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 11v5m0-8h.01" /></svg>
-                    {checkPopup.noHistory ? 'ยังไม่มีข้อมูล' : 'ข้อมูลไม่เพียงพอ'}
-                  </span>
-                ) : null}
-                <div className="check-popup-summary">
-                  <span>ประเภทการรายงาน</span><strong>{checkPopup.highestCategory || '—'}</strong>
-                  <span>จำนวนรายงาน</span><strong>{checkPopup.reportCount || 0} ครั้ง</strong>
-                  <span>แหล่งข้อมูล</span><strong>{checkPopup.found ? 'ชุมชน' : 'ยังไม่มีข้อมูล'}</strong>
+                  <strong>แหล่งที่มาของข้อมูล</strong>
                 </div>
-                {checkPopup.detail && (!checkPopup.found || !checkPopup.reportCount || !checkPopup.riskLevel)
-                  ? <p className="check-popup-detail">{checkPopup.detail}</p>
-                  : null}
-                {checkPopup.found ? (
-                  <div className="check-popup-disclaimer" role="note">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 11v5m0-8h.01" /></svg>
-                    <span>ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</span>
-                  </div>
-                ) : null}
-                {checkPopup.noHistory ? <p className="check-popup-safety-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0-8h.01" /></svg><span>ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</span></p> : null}
-                <button type="button" className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>รายงานเบอร์นี้</button>
-                <button type="button" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ปิด</button>
-                {checkPopup.found ? <button type="button" className="check-popup-link" onClick={handleOpenDisputeForm}>เป็นเจ้าของเบอร์นี้? ขอให้ตรวจสอบ</button> : null}
-              </>
-            )}
-          </section>
+                <p className="official-source-organization">{checkPopup.officialSource.organization}</p>
+                <p className="official-source-date">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3.5" y="5" width="17" height="16" rx="2" /><path strokeLinecap="round" d="M7.5 3v4m9-4v4M4 9.5h16" /></svg>
+                  <span>เผยแพร่ {formatReportedDate(checkPopup.officialSource.publishedDate)}</span>
+                </p>
+                <a className="official-source-link" href={checkPopup.officialSource.url} target="_blank" rel="noreferrer">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M13 5h6v6m-9 4 9-9M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></svg>
+                  <span>ดูข้อมูลจากเว็บไซต์ต้นทาง</span>
+                  <span aria-hidden="true">↗</span>
+                </a>
+              </DetailCard>
+            ) : checkPopup.found ? (
+              <AlertBanner className="check-popup-disclaimer" role="note">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 11v5m0-8h.01" /></svg>
+                <span>ข้อมูลนี้มาจากผู้ใช้งาน ไม่ใช่การยืนยันจากหน่วยงานรัฐ</span>
+              </AlertBanner>
+            ) : null}
+            {checkPopup.noHistory ? <AlertBanner as="p" className="check-popup-safety-note"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0-8h.01" /></svg><span>ไม่ได้แปลว่าปลอดภัย ระวังหากถูกขอ OTP หรือให้โอนเงิน</span></AlertBanner> : null}
+            <ModalButton className="success-home-button check-popup-report-button" onClick={handleReportFromCheck}>
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9.5a1.5 1.5 0 0 0-1.5 1.5v2A1.5 1.5 0 0 0 3 14.5h2.2l1.7 4.1a1 1 0 0 0 .92.62h1.5a1 1 0 0 0 .93-1.37L8.8 14.5h.7l9 5a1 1 0 0 0 1.5-.87V5.37a1 1 0 0 0-1.5-.87l-9 5H3Zm16-1.42 3.5-2.02v11.88L19 15.92V8.08Z" /></svg>
+              รายงานเบอร์นี้
+            </ModalButton>
+            <ModalButton variant="secondary" className="check-popup-cancel-button" onClick={() => setCheckPopup(null)}>ปิด</ModalButton>
+            {checkPopup.found ? <button type="button" className="check-popup-link" onClick={handleOpenDisputeForm}>เป็นเจ้าของเบอร์นี้? ขอให้ตรวจสอบ</button> : null}
+          </ReportModal>
         </div>
       ) : null}
 
