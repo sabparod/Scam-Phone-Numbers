@@ -3,7 +3,6 @@ import './App.css'
 import { supabase } from './lib/supabase'
 
 const REPORT_THRESHOLD = 3
-const OFFICIAL_REPORTS_PREVIEW_COUNT = 2
 const officialSource = {
   organization: 'สถานีตำรวจภูธรไทรโยค',
   type: 'government',
@@ -130,12 +129,6 @@ const getReporterMultiplier = (reporterCount) => {
 
 const getReporterCount = (phoneReports) => new Set(
   phoneReports.map((report) => report.reporterId || 'legacy-reporter'),
-).size
-
-const getUniqueReporterCount = (reportList) => new Set(
-  reportList
-    .map((report) => report.reporterId ?? report.reporter_id)
-    .filter(Boolean),
 ).size
 
 const getRiskScore = (phoneReports) => {
@@ -441,7 +434,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('check')
   const [expandedHistoryPhone, setExpandedHistoryPhone] = useState(null)
   const [selectedFrequentCategory, setSelectedFrequentCategory] = useState(null)
-  const [showAllOfficialReports, setShowAllOfficialReports] = useState(false)
+  const [isOfficialReportsOpen, setIsOfficialReportsOpen] = useState(false)
+  const [showAllCommunityCategories, setShowAllCommunityCategories] = useState(false)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => new Date())
   const [checkPhone, setCheckPhone] = useState('')
   const [isChecking, setIsChecking] = useState(false)
@@ -569,41 +563,18 @@ function App() {
     return { date: yesterday, dateKey, total: yesterdayReports.length, categories }
   }, [currentTimestamp, reports])
 
-  const communitySummary = useMemo(() => {
-    const categoryCounts = reports.reduce((counts, report) => {
-      const category = getCategoryName(report.category) || 'ไม่ระบุประเภท'
-      counts[category] = (counts[category] || 0) + 1
-      return counts
-    }, {})
-    const categories = Object.entries(categoryCounts).sort((first, second) => second[1] - first[1])
-
-    return { categories }
-  }, [reports])
-
   const frequentCategorySummary = useMemo(() => {
     const categoryCounts = new Map()
-    const addCount = (category, source) => {
-      const entry = categoryCounts.get(category) || { community: 0, official: 0 }
-      entry[source] += 1
-      categoryCounts.set(category, entry)
-    }
-
     reports.forEach((report) => {
-      addCount(getCategoryName(report.category) || 'ไม่ระบุประเภท', 'community')
-    })
-    officialReports.forEach((report) => {
-      addCount(getOfficialCategoryName(report), 'official')
+      const category = getCategoryName(report.category) || 'ไม่ระบุประเภท'
+      categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1)
     })
 
     const categories = [...categoryCounts.entries()]
-      .map(([category, counts]) => ({
-        category,
-        count: counts.community + counts.official,
-      }))
+      .map(([category, count]) => ({ category, count }))
       .sort((first, second) => second.count - first.count)
-    const total = reports.length + officialReports.length
 
-    return { categories, total }
+    return { categories, total: reports.length }
   }, [reports])
 
   const selectedCategoryReports = useMemo(() => {
@@ -621,22 +592,30 @@ function App() {
     const addPhoneReport = (report, source) => {
       const normalizedPhone = normalizePhone(report.phone || '')
       const key = normalizedPhone || 'unknown'
-      const entry = reportsByPhone.get(key) || { phone: normalizedPhone, communityCount: 0, officialCount: 0 }
+      const entry = reportsByPhone.get(key) || {
+        phone: normalizedPhone,
+        communityCount: 0,
+        officialCount: 0,
+        officialSources: new Map(),
+      }
       entry[`${source}Count`] += 1
+      if (source === 'official') {
+        entry.officialSources.set(report.source.url, report.source.organization)
+      }
       reportsByPhone.set(key, entry)
     }
 
     communityCategoryReports.forEach((report) => addPhoneReport(report, 'community'))
     officialCategoryReports.forEach((report) => addPhoneReport(report, 'official'))
     const phones = [...reportsByPhone.values()]
-      .map((entry) => ({
-        ...entry,
-        count: entry.communityCount + entry.officialCount,
-      }))
-      .sort((first, second) => second.count - first.count)
+      .map((entry) => ({ ...entry, officialSources: [...entry.officialSources] }))
+      .sort((first, second) => (
+        second.communityCount - first.communityCount || second.officialCount - first.officialCount
+      ))
 
     return {
-      total: communityCategoryReports.length + officialCategoryReports.length,
+      communityTotal: communityCategoryReports.length,
+      officialTotal: officialCategoryReports.length,
       phones,
     }
   }, [reports, selectedFrequentCategory])
@@ -651,6 +630,17 @@ function App() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedFrequentCategory])
+
+  useEffect(() => {
+    if (!isOfficialReportsOpen) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsOfficialReportsOpen(false)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOfficialReportsOpen])
 
   useEffect(() => {
     const normalized = normalizePhone(checkPhone)
@@ -1104,7 +1094,6 @@ function App() {
             <span className="search-panel-icon"><SearchIcon /></span>
             <div>
               <h2 id="search-title">ตรวจสอบหมายเลขโทรศัพท์</h2>
-              <p>ค้นหาประวัติการรายงานและตรวจสอบว่าเบอร์นี้มีความเสี่ยงหรือไม่</p>
             </div>
           </div>
           <form onSubmit={handleCheckSubmit} className="check-form">
@@ -1126,169 +1115,117 @@ function App() {
           {checkError ? <p className="check-error" id="check-error" role="alert">{checkError}</p> : null}
         </section>
 
-        {officialReports.length > 0 ? (
-          <section className="official-source-section" aria-labelledby="official-source-title">
-            <div className="community-heading">
-              <span className="community-heading-icon"><ReportIcon /></span>
-              <div>
-                <h2 id="official-source-title">รายงานจากแหล่งทางการ</h2>
-                <p>ข้อมูลจากหน่วยงานที่น่าเชื่อถือ</p>
-              </div>
-              <span className="community-total">{officialReports.length} รายการ</span>
-            </div>
-            <ul>
-              {officialReports.slice(0, showAllOfficialReports ? undefined : OFFICIAL_REPORTS_PREVIEW_COUNT).map((report) => (
-                <li key={report.phone}>
-                  <div className="official-source-record">
-                    <strong>{formatPhoneNumber(report.phone)}</strong>
-                    <span>{report.scamType} · {report.source.organization}</span>
-                    <small>เผยแพร่ {formatReportedDate(report.source.publishedDate)}</small>
-                  </div>
-                  <span className="official-source-risk">ความเสี่ยงสูง</span>
-                  <a href={report.source.url} target="_blank" rel="noreferrer">
-                    เว็บไซต์ต้นทาง
-                  </a>
-                </li>
-              ))}
-            </ul>
-            {officialReports.length > OFFICIAL_REPORTS_PREVIEW_COUNT ? (
-              <button
-                type="button"
-                className="official-source-toggle"
-                aria-expanded={showAllOfficialReports}
-                onClick={() => setShowAllOfficialReports((isExpanded) => !isExpanded)}
-              >
-                {showAllOfficialReports
-                  ? 'แสดงน้อยลง'
-                  : `ดูข้อมูลทั้งหมด (${officialReports.length} รายการ)`}
-                <span aria-hidden="true">{showAllOfficialReports ? '⌃' : '⌄'}</span>
-              </button>
-            ) : null}
-          </section>
-        ) : null}
-
-        <section className="community-section" aria-labelledby="community-title">
+        <section className="report-summary-card community-section" aria-labelledby="community-title">
           <div className="community-heading">
-            <span className="community-heading-icon"><ReportIcon /></span>
             <div>
               <h2 id="community-title">รายงานจากชุมชน</h2>
-              <p>ข้อมูลการรายงานจากผู้ใช้งาน</p>
             </div>
           </div>
 
-          {reports.length > 0 ? (
+          {!reportsLoading ? (
             <div className="community-metrics" aria-label="สถิติรายงานจากชุมชน">
               <div>
                 <strong>{reports.length}</strong>
-                <span>จำนวนรายงาน</span>
+                <span>รายงานทั้งหมด</span>
               </div>
               <div>
-                <strong>{getUniqueReporterCount(reports)}</strong>
-                <span>เบอร์โทรศัพท์ที่ถูกรายงานที่ไม่ซ้ำ</span>
+                <strong>{new Set(reports.map((report) => normalizePhone(report.phone)).filter(Boolean)).size}</strong>
+                <span>หมายเลขโทรศัพท์ไม่ซ้ำ</span>
               </div>
             </div>
           ) : null}
 
           <div className="daily-summary" aria-live="polite">
-            <div className="daily-summary-header">
-              <strong>ประเภทที่มีการรายงานเมื่อวาน</strong>
-              <time dateTime={yesterdaySummary.dateKey}>{formatBangkokDate(yesterdaySummary.date)}</time>
-            </div>
-            {reportsLoading ? (
-              <p className="yesterday-summary-loading"><span className="loading-spinner" />กำลังโหลดรายงาน</p>
-            ) : yesterdaySummary.total > 0 ? (
-              <>
-                <div className="yesterday-summary-total">
-                  <span>รายงานใหม่ทั้งหมด</span>
-                  <strong>{yesterdaySummary.total} รายงาน</strong>
-                </div>
-                <ul className="yesterday-category-list">
-                  {yesterdaySummary.categories.map(([category, count]) => (
-                    <li key={category}>
-                      <span className="category-dot" aria-hidden="true" />
-                      <span>{category}</span>
-                      <strong>{count} รายงาน</strong>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <div className="yesterday-summary-empty">
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-                  <rect x="3" y="5" width="18" height="16" rx="2" />
-                  <path strokeLinecap="round" d="M16 3v4M8 3v4M3 10h18m-11 5 2 2 4-4" />
-                </svg>
-                <strong>เมื่อวานไม่มีรายงานใหม่</strong>
-              </div>
-            )}
+            <span className="daily-summary-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <circle cx="12" cy="12" r="9" />
+                <path strokeLinecap="round" d="M12 7v5l3 2" />
+              </svg>
+            </span>
+            <span className="daily-summary-copy">
+              <span>เมื่อวาน ({formatBangkokDate(yesterdaySummary.date)})</span>
+              <strong>
+                {reportsLoading
+                  ? 'กำลังโหลดรายงาน'
+                  : yesterdaySummary.total > 0
+                    ? `มีรายงานใหม่ ${yesterdaySummary.total} รายการ`
+                    : 'ยังไม่มีรายงานใหม่'}
+              </strong>
+            </span>
           </div>
 
           {reportsLoading ? (
             <div className="community-loading" role="status"><span className="loading-spinner" />กำลังโหลดรายงาน</div>
-          ) : reports.length === 0 ? (
-            <div className="community-empty">
-              <span className="empty-report-icon"><ReportIcon /></span>
-              <h3>วันนี้ยังไม่มีรายงานใหม่</h3>
-              <p>เมื่อมีผู้ใช้งานรายงานหมายเลข ข้อมูลจะแสดงที่นี่</p>
-              <button type="button" className="secondary-action" onClick={() => setActiveTab('report')}>+ รายงานหมายเลข</button>
+          ) : null}
+        </section>
+
+        {!reportsLoading && reports.length > 0 ? (
+          <section className="report-summary-card community-category-card" aria-labelledby="community-categories-title">
+            <div className="community-data-heading">
+              <h3 id="community-categories-title">ประเภทที่พบบ่อย</h3>
+              <span>จาก {reports.length} รายงาน</span>
             </div>
-          ) : reports.length <= 5 ? (
-            <div className="community-data">
-              <h3>รายงานล่าสุด</h3>
-              <ul className="category-list">
-                {communitySummary.categories.map(([category, count]) => (
-                  <li key={category}>
-                    <span className="category-dot" aria-hidden="true" />
-                    <span>{category}</span>
-                    <strong>{count} รายงาน</strong>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <div className="community-data">
-              <h3>ประเภทการรายงานที่พบบ่อย</h3>
-              <ul className="category-bars">
-                {[
-                ...frequentCategorySummary.categories.slice(0, 5).map(({ category, count }) => ({
-                    category,
-                    count,
-                    includedCategories: [category],
-                  })),
-                ...(frequentCategorySummary.categories.length > 5
-                    ? [{
-                      category: 'ประเภทอื่น ๆ',
-                    count: frequentCategorySummary.categories.slice(5).reduce((total, { count: categoryCount }) => total + categoryCount, 0),
-                    includedCategories: frequentCategorySummary.categories.slice(5).map(({ category }) => category),
-                    }]
-                    : []),
-                ].map(({ category, count, includedCategories }) => (
+            <ul className="category-bars">
+              {frequentCategorySummary.categories
+                .slice(0, showAllCommunityCategories ? frequentCategorySummary.categories.length : 5)
+                .map(({ category, count }) => (
                   <li key={category}>
                     <div className="category-bar-label">
                       <button
                         type="button"
                         className="category-name-button"
-                        onClick={() => setSelectedFrequentCategory({ name: category, categories: includedCategories })}
+                        onClick={() => setSelectedFrequentCategory({ name: category, categories: [category] })}
                       >
                         {category}
                       </button>
                       <button
                         type="button"
                         className="category-count-button"
-                        onClick={() => setSelectedFrequentCategory({ name: category, categories: includedCategories })}
+                        onClick={() => setSelectedFrequentCategory({ name: category, categories: [category] })}
                       >
-                        {count} ครั้ง
+                        {count} รายงาน
                       </button>
                     </div>
-                    <div className="category-track" role="img" aria-label={`${category} ${Math.round((count / frequentCategorySummary.total) * 100)} เปอร์เซ็นต์`}>
+                    <div className="category-track" role="img" aria-label={`${category}: ${count} จาก ${frequentCategorySummary.total} รายงานจากชุมชน`}>
                       <span style={{ width: `${(count / frequentCategorySummary.total) * 100}%` }} />
                     </div>
                   </li>
                 ))}
-              </ul>
-            </div>
-          )}
-        </section>
+            </ul>
+            {frequentCategorySummary.categories.length > 5 ? (
+              <button
+                type="button"
+                className="official-source-toggle community-categories-toggle"
+                aria-expanded={showAllCommunityCategories}
+                onClick={() => setShowAllCommunityCategories((isExpanded) => !isExpanded)}
+              >
+                {showAllCommunityCategories ? 'แสดงเฉพาะประเภทหลัก' : 'ดูข้อมูลทั้งหมด'}
+                <span aria-hidden="true">{showAllCommunityCategories ? '⌃' : '⌄'}</span>
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+
+        {officialReports.length > 0 ? (
+          <button
+            type="button"
+            className="official-report-entry"
+            onClick={() => setIsOfficialReportsOpen(true)}
+            aria-label={`ดูรายงานจากแหล่งทางการ ${officialReports.length} รายการ`}
+          >
+            <span className="official-report-entry-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 21V4" />
+                <path d="M5 4h13l-2.5 4L18 12H5" />
+              </svg>
+            </span>
+            <span className="official-report-entry-copy">
+              <strong>ดูรายงานจากแหล่งทางการ</strong>
+              <small>{officialReports.length} รายการ</small>
+            </span>
+            <span className="official-report-entry-arrow" aria-hidden="true">›</span>
+          </button>
+        ) : null}
 
         <aside className="report-invitation">
           <div>
@@ -1331,18 +1268,81 @@ function App() {
           <section className="category-detail-modal" role="dialog" aria-modal="true" aria-labelledby="category-detail-title">
             <button type="button" className="modal-close" aria-label="ปิดรายละเอียด" onClick={() => setSelectedFrequentCategory(null)}>×</button>
             <h2 id="category-detail-title">{selectedFrequentCategory.name}</h2>
-            <p className="category-detail-total">{selectedCategoryReports.total} รายงาน</p>
+            <div className="category-detail-totals">
+              <p className="category-detail-total">ชุมชน: {selectedCategoryReports.communityTotal} รายงาน</p>
+              {selectedCategoryReports.officialTotal > 0 ? (
+                <p className="category-detail-total">แหล่งทางการ: {selectedCategoryReports.officialTotal} รายงาน</p>
+              ) : null}
+            </div>
             {selectedCategoryReports.phones.length > 0 ? (
               <ul className="category-detail-list">
-                {selectedCategoryReports.phones.map(({ phone, count, communityCount, officialCount }) => (
+                {selectedCategoryReports.phones.map(({ phone, communityCount, officialCount, officialSources }) => (
                   <li key={phone || 'unknown'}>
                     <strong>{phone ? maskPhoneNumber(phone) : 'ไม่ระบุหมายเลข'}</strong>
-                    <span>{count} รายงาน</span>
-                    <small>ชุมชน {communityCount} / แหล่งทางการ {officialCount}</small>
+                    <div className="category-detail-sources">
+                      {communityCount > 0 ? <span>ชุมชน: {communityCount} รายงาน</span> : null}
+                      {officialCount > 0 ? <span>แหล่งทางการ: {officialCount} รายงาน</span> : null}
+                    </div>
+                    {officialSources.map(([url, organization]) => (
+                      <a key={url} href={url} target="_blank" rel="noreferrer">
+                        แหล่งทางการ: {organization}
+                      </a>
+                    ))}
                   </li>
                 ))}
               </ul>
             ) : <p className="category-detail-empty">ไม่พบหมายเลขในประเภทนี้</p>}
+          </section>
+        </div>
+      ) : null}
+
+      {isOfficialReportsOpen ? (
+        <div
+          className="success-overlay official-reports-overlay"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setIsOfficialReportsOpen(false)
+          }}
+        >
+          <section
+            className="official-reports-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="official-reports-title"
+          >
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="ปิดรายงานจากแหล่งทางการ"
+              onClick={() => setIsOfficialReportsOpen(false)}
+            >
+              ×
+            </button>
+            <div className="official-reports-heading">
+              <span className="community-heading-icon"><ReportIcon /></span>
+              <div>
+                <h2 id="official-reports-title">รายงานจากแหล่งทางการ</h2>
+                <p>ข้อมูลจากหน่วยงานต้นทาง · {officialReports.length} รายการ</p>
+              </div>
+            </div>
+            <ul className="official-reports-list">
+              {officialReports.map((report) => (
+                <li key={report.phone}>
+                  <div className="official-reports-record">
+                    <strong>{formatPhoneNumber(report.phone)}</strong>
+                    <span><b>ประเภทการหลอกลวง</b> {report.scamType}</span>
+                    <span><b>หน่วยงาน</b> {report.source.organization}</span>
+                    <small>วันที่เผยแพร่ {formatReportedDate(report.source.publishedDate)}</small>
+                  </div>
+                  <span className="official-source-risk">
+                    ความเสี่ยง{report.riskLevel === 'high' ? 'สูง' : report.riskLevel === 'medium' ? 'ปานกลาง' : 'ต่ำ'}
+                  </span>
+                  <a href={report.source.url} target="_blank" rel="noreferrer">
+                    ดูข้อมูลจากเว็บไซต์ต้นทาง
+                  </a>
+                </li>
+              ))}
+            </ul>
           </section>
         </div>
       ) : null}
