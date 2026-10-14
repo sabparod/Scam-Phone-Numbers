@@ -1117,46 +1117,60 @@ function App() {
 
         <section className="report-summary-card community-section" aria-labelledby="community-title">
           <div className="community-heading">
-            <div>
-              <h2 id="community-title">รายงานจากชุมชน</h2>
+            <div className="community-heading-main">
+              <span className="community-heading-icon"><ReportIcon /></span>
+              <div>
+                <h2 id="community-title">รายงานจากชุมชน</h2>
+                <p>ข้อมูลการรายงานจากผู้ใช้งาน</p>
+              </div>
             </div>
+            {!reportsLoading ? (
+              <div className="community-metrics" aria-label="สถิติรายงานจากชุมชน">
+                <div>
+                  <strong>{reports.length}</strong>
+                  <span>จำนวนรายงาน</span>
+                </div>
+                <div>
+                  <strong>{new Set(reports.map((report) => normalizePhone(report.phone)).filter(Boolean)).size}</strong>
+                  <span>เบอร์โทรศัพท์ที่ถูกรายงานที่ไม่ซ้ำ</span>
+                </div>
+              </div>
+            ) : null}
           </div>
-
-          {!reportsLoading ? (
-            <div className="community-metrics" aria-label="สถิติรายงานจากชุมชน">
-              <div>
-                <strong>{reports.length}</strong>
-                <span>รายงานทั้งหมด</span>
-              </div>
-              <div>
-                <strong>{new Set(reports.map((report) => normalizePhone(report.phone)).filter(Boolean)).size}</strong>
-                <span>หมายเลขโทรศัพท์ไม่ซ้ำ</span>
-              </div>
-            </div>
-          ) : null}
 
           <div className="daily-summary" aria-live="polite">
-            <span className="daily-summary-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-                <circle cx="12" cy="12" r="9" />
-                <path strokeLinecap="round" d="M12 7v5l3 2" />
-              </svg>
-            </span>
-            <span className="daily-summary-copy">
-              <span>เมื่อวาน ({formatBangkokDate(yesterdaySummary.date)})</span>
-              <strong>
-                {reportsLoading
-                  ? 'กำลังโหลดรายงาน'
-                  : yesterdaySummary.total > 0
-                    ? `มีรายงานใหม่ ${yesterdaySummary.total} รายการ`
-                    : 'ยังไม่มีรายงานใหม่'}
-              </strong>
-            </span>
+            <div className="daily-summary-header">
+              <strong>ประเภทที่มีการรายงานเมื่อวาน</strong>
+              <time dateTime={yesterdaySummary.dateKey}>{formatBangkokDate(yesterdaySummary.date)}</time>
+            </div>
+            {reportsLoading ? (
+              <p className="yesterday-summary-loading"><span className="loading-spinner" />กำลังโหลดรายงาน</p>
+            ) : yesterdaySummary.total > 0 ? (
+              <>
+                <div className="yesterday-summary-total">
+                  <span>รายงานใหม่ทั้งหมด</span>
+                  <strong>{yesterdaySummary.total} รายงาน</strong>
+                </div>
+                <ul className="yesterday-category-list">
+                  {yesterdaySummary.categories.map(([category, count]) => (
+                    <li key={category}>
+                      <span className="category-dot" aria-hidden="true" />
+                      <span>{category}</span>
+                      <strong>{count} รายงาน</strong>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <div className="yesterday-summary-empty">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                  <rect x="3" y="5" width="18" height="16" rx="2" />
+                  <path strokeLinecap="round" d="M16 3v4M8 3v4M3 10h18m-11 5 2 2 4-4" />
+                </svg>
+                <strong>เมื่อวานไม่มีรายงานใหม่</strong>
+              </div>
+            )}
           </div>
-
-          {reportsLoading ? (
-            <div className="community-loading" role="status"><span className="loading-spinner" />กำลังโหลดรายงาน</div>
-          ) : null}
         </section>
 
         {!reportsLoading && reports.length > 0 ? (
