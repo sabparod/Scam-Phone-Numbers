@@ -436,6 +436,7 @@ function App() {
   const [selectedFrequentCategory, setSelectedFrequentCategory] = useState(null)
   const [isOfficialReportsOpen, setIsOfficialReportsOpen] = useState(false)
   const [showAllCommunityCategories, setShowAllCommunityCategories] = useState(false)
+  const [showAllOfficialCategories, setShowAllOfficialCategories] = useState(false)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => new Date())
   const [checkPhone, setCheckPhone] = useState('')
   const [isChecking, setIsChecking] = useState(false)
@@ -577,14 +578,30 @@ function App() {
     return { categories, total: reports.length }
   }, [reports])
 
+  const frequentOfficialCategorySummary = useMemo(() => {
+    const categoryCounts = new Map()
+    officialReports.forEach((report) => {
+      const category = getOfficialCategoryName(report)
+      categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1)
+    })
+
+    const categories = [...categoryCounts.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((first, second) => (
+        second.count - first.count || first.category.localeCompare(second.category, 'th')
+      ))
+
+    return { categories, total: officialReports.length }
+  }, [])
+
   const selectedCategoryReports = useMemo(() => {
     if (!selectedFrequentCategory) return null
 
     const includedCategories = new Set(selectedFrequentCategory.categories)
-    const communityCategoryReports = reports.filter((report) => (
+    const communityCategoryReports = selectedFrequentCategory.source === 'official' ? [] : reports.filter((report) => (
       includedCategories.has(getCategoryName(report.category) || 'ไม่ระบุประเภท')
     ))
-    const officialCategoryReports = officialReports.filter((report) => (
+    const officialCategoryReports = selectedFrequentCategory.source === 'community' ? [] : officialReports.filter((report) => (
       includedCategories.has(getOfficialCategoryName(report))
     ))
     const reportsByPhone = new Map()
@@ -1171,74 +1188,142 @@ function App() {
               </div>
             )}
           </div>
+          {!reportsLoading && reports.length > 0 ? (
+            <section className="community-category-section" aria-labelledby="community-categories-title">
+              <div className="community-data-heading">
+                <h3 id="community-categories-title">ประเภทที่พบบ่อย</h3>
+                <span>จาก {reports.length} รายงาน</span>
+              </div>
+              <ul className="category-bars">
+                {frequentCategorySummary.categories
+                  .slice(0, showAllCommunityCategories ? frequentCategorySummary.categories.length : 5)
+                  .map(({ category, count }) => (
+                    <li key={category}>
+                      <div className="category-bar-label">
+                        <button
+                          type="button"
+                          className="category-name-button"
+                          onClick={() => setSelectedFrequentCategory({ name: category, categories: [category], source: 'community' })}
+                        >
+                          {category}
+                        </button>
+                        <button
+                          type="button"
+                          className="category-count-button"
+                          onClick={() => setSelectedFrequentCategory({ name: category, categories: [category], source: 'community' })}
+                        >
+                          {count} รายงาน
+                        </button>
+                      </div>
+                      <div className="category-track" role="img" aria-label={`${category}: ${count} จาก ${frequentCategorySummary.total} รายงานจากชุมชน`}>
+                        <span style={{ width: `${(count / frequentCategorySummary.total) * 100}%` }} />
+                      </div>
+                    </li>
+                  ))}
+              </ul>
+              {frequentCategorySummary.categories.length > 5 ? (
+                <button
+                  type="button"
+                  className="official-source-toggle community-categories-toggle"
+                  aria-expanded={showAllCommunityCategories}
+                  onClick={() => setShowAllCommunityCategories((isExpanded) => !isExpanded)}
+                >
+                  {showAllCommunityCategories ? 'แสดงเฉพาะประเภทหลัก' : 'ดูข้อมูลทั้งหมด'}
+                  <span aria-hidden="true">{showAllCommunityCategories ? '⌃' : '⌄'}</span>
+                </button>
+              ) : null}
+            </section>
+          ) : null}
         </section>
 
-        {!reportsLoading && reports.length > 0 ? (
-          <section className="report-summary-card community-category-card" aria-labelledby="community-categories-title">
-            <div className="community-data-heading">
-              <h3 id="community-categories-title">ประเภทที่พบบ่อย</h3>
-              <span>จาก {reports.length} รายงาน</span>
-            </div>
-            <ul className="category-bars">
-              {frequentCategorySummary.categories
-                .slice(0, showAllCommunityCategories ? frequentCategorySummary.categories.length : 5)
-                .map(({ category, count }) => (
-                  <li key={category}>
-                    <div className="category-bar-label">
-                      <button
-                        type="button"
-                        className="category-name-button"
-                        onClick={() => setSelectedFrequentCategory({ name: category, categories: [category] })}
-                      >
-                        {category}
-                      </button>
-                      <button
-                        type="button"
-                        className="category-count-button"
-                        onClick={() => setSelectedFrequentCategory({ name: category, categories: [category] })}
-                      >
-                        {count} รายงาน
-                      </button>
-                    </div>
-                    <div className="category-track" role="img" aria-label={`${category}: ${count} จาก ${frequentCategorySummary.total} รายงานจากชุมชน`}>
-                      <span style={{ width: `${(count / frequentCategorySummary.total) * 100}%` }} />
-                    </div>
-                  </li>
-                ))}
-            </ul>
-            {frequentCategorySummary.categories.length > 5 ? (
-              <button
-                type="button"
-                className="official-source-toggle community-categories-toggle"
-                aria-expanded={showAllCommunityCategories}
-                onClick={() => setShowAllCommunityCategories((isExpanded) => !isExpanded)}
-              >
-                {showAllCommunityCategories ? 'แสดงเฉพาะประเภทหลัก' : 'ดูข้อมูลทั้งหมด'}
-                <span aria-hidden="true">{showAllCommunityCategories ? '⌃' : '⌄'}</span>
-              </button>
-            ) : null}
-          </section>
-        ) : null}
-
         {officialReports.length > 0 ? (
-          <button
-            type="button"
-            className="official-report-entry"
-            onClick={() => setIsOfficialReportsOpen(true)}
-            aria-label={`ดูรายงานจากแหล่งทางการ ${officialReports.length} รายการ`}
-          >
-            <span className="official-report-entry-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 21V4" />
-                <path d="M5 4h13l-2.5 4L18 12H5" />
-              </svg>
-            </span>
-            <span className="official-report-entry-copy">
-              <strong>ดูรายงานจากแหล่งทางการ</strong>
-              <small>{officialReports.length} รายการ</small>
-            </span>
-            <span className="official-report-entry-arrow" aria-hidden="true">›</span>
-          </button>
+          <section className="report-summary-card official-reports-group" aria-labelledby="official-summary-title">
+            <div className="official-summary-section">
+              <div className="community-heading">
+                <div className="community-heading-main">
+                  <span className="community-heading-icon"><ReportIcon /></span>
+                  <div>
+                    <h2 id="official-summary-title">รายงานจากแหล่งทางการ</h2>
+                    <p>ข้อมูลจากหน่วยงานต้นทาง</p>
+                  </div>
+                </div>
+                <div className="community-metrics" aria-label="สถิติรายงานจากแหล่งทางการ">
+                  <div>
+                    <strong>{officialReports.length}</strong>
+                    <span>รายงานจากทางการ</span>
+                  </div>
+                  <div>
+                    <strong>{new Set(officialReports.map((report) => normalizePhone(report.phone)).filter(Boolean)).size}</strong>
+                    <span>หมายเลขโทรศัพท์ไม่ซ้ำ</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="community-category-card official-category-card" aria-labelledby="official-categories-title">
+              <div className="community-data-heading">
+                <h3 id="official-categories-title">ประเภทที่พบบ่อย</h3>
+                <span>จาก {frequentOfficialCategorySummary.total} รายงานทางการ</span>
+              </div>
+              <ul className="category-bars">
+                {frequentOfficialCategorySummary.categories
+                  .slice(0, showAllOfficialCategories ? frequentOfficialCategorySummary.categories.length : 5)
+                  .map(({ category, count }) => (
+                    <li key={category}>
+                      <div className="category-bar-label">
+                        <button
+                          type="button"
+                          className="category-name-button"
+                          onClick={() => setSelectedFrequentCategory({ name: category, categories: [category], source: 'official' })}
+                        >
+                          {category}
+                        </button>
+                        <button
+                          type="button"
+                          className="category-count-button"
+                          onClick={() => setSelectedFrequentCategory({ name: category, categories: [category], source: 'official' })}
+                        >
+                          {count} รายงาน
+                        </button>
+                      </div>
+                      <div className="category-track" role="img" aria-label={`${category}: ${count} จาก ${frequentOfficialCategorySummary.total} รายงานจากแหล่งทางการ`}>
+                        <span style={{ width: `${(count / frequentOfficialCategorySummary.categories[0].count) * 100}%` }} />
+                      </div>
+                    </li>
+                  ))}
+              </ul>
+              {frequentOfficialCategorySummary.categories.length > 5 ? (
+                <button
+                  type="button"
+                  className="official-source-toggle community-categories-toggle"
+                  aria-expanded={showAllOfficialCategories}
+                  onClick={() => setShowAllOfficialCategories((isExpanded) => !isExpanded)}
+                >
+                  {showAllOfficialCategories ? 'แสดงเฉพาะประเภทหลัก' : 'ดูข้อมูลทั้งหมด'}
+                  <span aria-hidden="true">{showAllOfficialCategories ? '⌃' : '⌄'}</span>
+                </button>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              className="official-report-entry"
+              onClick={() => setIsOfficialReportsOpen(true)}
+              aria-label={`ดูรายงานจากแหล่งทางการ ${officialReports.length} รายการ`}
+            >
+              <span className="official-report-entry-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 21V4" />
+                  <path d="M5 4h13l-2.5 4L18 12H5" />
+                </svg>
+              </span>
+              <span className="official-report-entry-copy">
+                <strong>ดูรายงานจากแหล่งทางการ</strong>
+                <small>{officialReports.length} รายการ</small>
+              </span>
+              <span className="official-report-entry-arrow" aria-hidden="true">›</span>
+            </button>
+          </section>
         ) : null}
 
         <aside className="report-invitation">
@@ -1283,8 +1368,10 @@ function App() {
             <button type="button" className="modal-close" aria-label="ปิดรายละเอียด" onClick={() => setSelectedFrequentCategory(null)}>×</button>
             <h2 id="category-detail-title">{selectedFrequentCategory.name}</h2>
             <div className="category-detail-totals">
-              <p className="category-detail-total">ชุมชน: {selectedCategoryReports.communityTotal} รายงาน</p>
-              {selectedCategoryReports.officialTotal > 0 ? (
+              {selectedFrequentCategory.source !== 'official' ? (
+                <p className="category-detail-total">ชุมชน: {selectedCategoryReports.communityTotal} รายงาน</p>
+              ) : null}
+              {selectedFrequentCategory.source !== 'community' ? (
                 <p className="category-detail-total">แหล่งทางการ: {selectedCategoryReports.officialTotal} รายงาน</p>
               ) : null}
             </div>
