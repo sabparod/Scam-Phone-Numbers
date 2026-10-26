@@ -164,6 +164,12 @@ const maskPhoneNumber = (value) => {
   return `${phone.slice(0, visibleDigits)}${'*'.repeat(phone.length - visibleDigits)}`
 }
 
+const maskCommunityPhoneNumber = (value) => {
+  const phone = normalizePhone(value || '')
+  if (phone.length === 10) return `${phone.slice(0, 2)}X-XXX-${phone.slice(-4)}`
+  return maskPhoneNumber(phone)
+}
+
 const formatReportedAt = (value) => new Intl.DateTimeFormat('th-TH', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -434,6 +440,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('check')
   const [expandedHistoryPhone, setExpandedHistoryPhone] = useState(null)
   const [selectedFrequentCategory, setSelectedFrequentCategory] = useState(null)
+  const [isCommunityReportsOpen, setIsCommunityReportsOpen] = useState(false)
   const [isOfficialReportsOpen, setIsOfficialReportsOpen] = useState(false)
   const [showAllCommunityCategories, setShowAllCommunityCategories] = useState(false)
   const [showAllOfficialCategories, setShowAllOfficialCategories] = useState(false)
@@ -647,6 +654,17 @@ function App() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedFrequentCategory])
+
+  useEffect(() => {
+    if (!isCommunityReportsOpen) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsCommunityReportsOpen(false)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isCommunityReportsOpen])
 
   useEffect(() => {
     if (!isOfficialReportsOpen) return undefined
@@ -1142,15 +1160,23 @@ function App() {
               </div>
             </div>
             {!reportsLoading ? (
-              <div className="community-metrics" aria-label="สถิติรายงานจากชุมชน">
-                <div>
+              <div className="community-metrics community-summary-metrics" aria-label="สถิติรายงานจากชุมชน">
+                <button
+                  type="button"
+                  aria-label={`ดูรายงานจากชุมชนทั้งหมด ${reports.length} รายงาน`}
+                  onClick={() => setIsCommunityReportsOpen(true)}
+                >
                   <strong>{reports.length}</strong>
                   <span>จำนวนรายงาน</span>
-                </div>
-                <div>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`ดูรายงานจากชุมชนทั้งหมด ซึ่งมีเบอร์โทรศัพท์ไม่ซ้ำ ${new Set(reports.map((report) => normalizePhone(report.phone)).filter(Boolean)).size} เบอร์`}
+                  onClick={() => setIsCommunityReportsOpen(true)}
+                >
                   <strong>{new Set(reports.map((report) => normalizePhone(report.phone)).filter(Boolean)).size}</strong>
                   <span>เบอร์โทรศัพท์ที่ถูกรายงานที่ไม่ซ้ำ</span>
-                </div>
+                </button>
               </div>
             ) : null}
           </div>
@@ -1247,15 +1273,23 @@ function App() {
                     <p>ข้อมูลจากหน่วยงานต้นทาง</p>
                   </div>
                 </div>
-                <div className="community-metrics" aria-label="สถิติรายงานจากแหล่งทางการ">
-                  <div>
+                <div className="community-metrics official-summary-metrics" aria-label="สถิติรายงานจากแหล่งทางการ">
+                  <button
+                    type="button"
+                    aria-label={`ดูรายงานจากทางการทั้งหมด ${officialReports.length} รายงาน`}
+                    onClick={() => setIsOfficialReportsOpen(true)}
+                  >
                     <strong>{officialReports.length}</strong>
                     <span>รายงานจากทางการ</span>
-                  </div>
-                  <div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`ดูรายงานทางการทั้งหมด ซึ่งมีหมายเลขโทรศัพท์ไม่ซ้ำ ${new Set(officialReports.map((report) => normalizePhone(report.phone)).filter(Boolean)).size} หมายเลข`}
+                    onClick={() => setIsOfficialReportsOpen(true)}
+                  >
                     <strong>{new Set(officialReports.map((report) => normalizePhone(report.phone)).filter(Boolean)).size}</strong>
                     <span>หมายเลขโทรศัพท์ไม่ซ้ำ</span>
-                  </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1355,6 +1389,54 @@ function App() {
           <span>ประวัติ</span>
         </button>
       </nav>
+
+      {isCommunityReportsOpen ? (
+        <div
+          className="success-overlay official-reports-overlay"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setIsCommunityReportsOpen(false)
+          }}
+        >
+          <section
+            className="official-reports-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="community-reports-title"
+          >
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="ปิดรายงานจากชุมชน"
+              onClick={() => setIsCommunityReportsOpen(false)}
+            >
+              ×
+            </button>
+            <div className="official-reports-heading">
+              <span className="community-heading-icon"><ReportIcon /></span>
+              <div>
+                <h2 id="community-reports-title">รายงานจากชุมชน</h2>
+                <p>ข้อมูลการรายงานจากผู้ใช้งาน · {reports.length} รายการ</p>
+              </div>
+            </div>
+            {reports.length > 0 ? (
+              <ul className="official-reports-list community-reports-list">
+                {reports.map((report, index) => (
+                  <li key={report.id || `${report.phone}-${report.reportedAt || report.date}-${index}`}>
+                    <div className="official-reports-record">
+                      <strong>{maskCommunityPhoneNumber(report.phone)}</strong>
+                      <span><b>ประเภทการหลอกลวง</b> {getCategoryName(report.category) || 'ไม่ระบุประเภท'}</span>
+                      <span><b>แหล่งรายงาน</b> ชุมชน</span>
+                      <small>วันที่รายงาน {formatReportedAt(report.reportedAt || report.date)}</small>
+                      {report.detail ? <span><b>รายละเอียด</b> {report.detail}</span> : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="category-detail-empty">ยังไม่มีรายงานจากชุมชน</p>}
+          </section>
+        </div>
+      ) : null}
 
       {selectedFrequentCategory && selectedCategoryReports ? (
         <div
